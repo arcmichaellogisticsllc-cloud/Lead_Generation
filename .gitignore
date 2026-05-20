@@ -1,0 +1,14 @@
+.env
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+data/raw/
+data/processed/
+data/leads.db
+data/exports/
+data/pipeline.log
+state.json
+.DS_Store
+*.pdf

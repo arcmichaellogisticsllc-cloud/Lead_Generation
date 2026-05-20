@@ -1,0 +1,72 @@
+# Fallback name keywords when NAICS is missing or generic
+tier_1:
+  - plumbing
+  - plumber
+  - hvac
+  - heating
+  - cooling
+  - "air conditioning"
+  - mechanical
+  - electric
+  - electrical
+  - wiring
+  - roofing
+  - roofer
+  - roof
+  - painting
+  - painter
+  - contractor
+  - construction
+  - builders
+  - remodel
+  - renovation
+  - landscap
+  - lawn
+  - "tree service"
+  - irrigation
+  - hardscape
+  - "garage door"
+  - "overhead door"
+  - concrete
+  - paving
+  - masonry
+  - foundation
+  - earthwork
+  - grading
+  - excavat
+  - sitework
+
+tier_2:
+  - automotive
+  - "auto repair"
+  - "auto shop"
+  - mechanic
+  - "body shop"
+  - collision
+  - "auto body"
+  - "car wash"
+  - detailing
+  - tire
+  - wheel
+
+tier_3:
+  - "med spa"
+  - medspa
+  - aesthetics
+  - "wellness center"
+  - salon
+  - barber
+  - "hair studio"
+  - fitness
+  - gym
+  - "yoga studio"
+  - pilates
+  - crossfit
+  - "personal training"
+  - massage
+  - bodywork
+  - cleaning
+  - cleaner
+  - janitorial
+  - maid
+  - housekeeping

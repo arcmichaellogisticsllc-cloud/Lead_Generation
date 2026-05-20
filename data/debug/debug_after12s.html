@@ -1,0 +1,315 @@
+<!DOCTYPE html><html><head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1">
+    <meta id="viewport" name="viewport" content="user-scalable=0, width=device-width, height=device-height, initial-scale=0.5, maximum-scale=0.5">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GEORGIA</title>
+    <link href="/Themes/CSS/Styles?v=Zg5mvax9ru3G0Vr5izUJdPH0jjJ6wtthi2dPqDAi_201" rel="stylesheet">
+
+    <script src="/Scripts/Script?v=8X2IDPh1LaRe4erLuQcGu5zpE8N1cVf-nEWZkD0RhvQ1"></script>
+
+
+    
+    
+    <script type="text/javascript">
+        $v.messagebox = function (msg) {
+            errorDialog(msg, true);
+        };
+
+        $(function () {
+            if ($("#_errorElement_").val() != "") {
+                errorDialog($("#_errorElement_").val());
+            }
+        });
+
+
+        function ShowReportDialog() {
+            var top = (($(window).height() - 400) / 2);
+            var left = (($(window).width() - 700) / 2);
+            var reportUs = window.open("/Home/ReportUs", "Report", "width=700, height=400, left=" + left + ", top=" + top + ", toolbar=0, status=1");
+            reportUs.focus();
+            return false;
+        }
+    </script>
+    <style type="text/css">
+        .uatBg {
+            background: #2d2d2f url('../../Themes/base/Images/ga_uat.png') repeat 100% !important; /*#36598a*/
+        }
+    </style>
+
+</head>
+<body class="loginbody" style="">
+    <input type="hidden" id="_errorElement_" value="No data found." style="">
+    <table class="header_color" width="100%" border="0" cellspacing="0" cellpadding="8">
+        <tbody>
+            <tr>
+                <td>
+                    <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                        <tbody>
+                            <tr>
+                                <td width="100" align="center" valign="middle">
+                                    <img src="/Themes/base/images/sos-logo.PNG">
+                                </td>
+                                <td valign="middle" class="header_left">
+                                    <div class="header_txt">
+                                        Georgia<br>
+                                        Corporations Division 
+                                    </div>
+                                </td>
+                                <td align="right">
+                                    <span class="header_small_title">GEORGIA SECRETARY OF STATE</span><br>
+                                    <span class="header_txt">BRAD RAFFENSPERGER</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    
+
+<div class="right_content"><div style="width:100%;text-align:right;font-weight:bold;"><a href="/">HOME</a>&nbsp;&nbsp;</div>
+<table width="100%" border="0" cellspacing="0" cellpadding="0">
+    <tbody><tr>
+        <td class="border_pagetitle">
+            <div class="pagetitle">
+                <table border="0" cellspacing="0" cellpadding="0">
+                    <tbody><tr>
+                        <td class="title_bg" id="tdBusinessSearch" onclick="BusinessSearch(this)" style="" title="BUSINESS SEARCH" alt="BUSINESS SEARCH">BUSINESS SEARCH</td>
+                        <td align="left">
+                            <img src="/Themes/CRDBase/images/corver.png" width="27" height="30">
+                        </td>
+                        <td class="title_bg" id="tdSOPSearch" onclick="SOPSearch(this)" style="cursor: pointer; color: rgb(210, 210, 210);" title="SERVICE OF PROCESS SEARCH" alt="SERVICE OF PROCESS SEARCH">SERVICE OF PROCESS SEARCH</td>
+                        <td align="left" id="tdSOPimg">
+                            <img src="/Themes/CRDBase/images/corver.png" width="27" height="30">
+                        </td>
+                         <td class="title_bg" id="tdTrademarksSearch" onclick="TrademarksSearch(this)" style="cursor: pointer; color: rgb(210, 210, 210);" title="TRADEMARK SEARCH" alt="TRADEMARK SEARCH">TRADEMARK SEARCH</td>
+                        <td align="left" id="tdTrademarksimg">
+                            <img src="/Themes/CRDBase/images/corver.png" width="27" height="30">
+                        </td>
+                    </tr>
+                </tbody></table>
+            </div>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            <div class="data_pannel">
+                <table cellpadding="2" id="basetable">
+                    <tbody><tr>
+                        <td style="width: 180px;">&nbsp;</td>
+                        <td>
+                            <input type="radio" name="SearchCriteria" id="rdStartsWith" value="StartsWith" style="">&nbsp;
+                            <label for="rdStartsWith">Starts With</label>
+                            &nbsp;&nbsp;
+                            <input type="radio" name="SearchCriteria" id="rdContains" value="Contains" checked="checked" style="">&nbsp;
+                            <label for="rdContains">Contains</label>
+                            &nbsp;&nbsp;
+                            <input type="radio" name="SearchCriteria" id="rdExactMatch" value="ExactMatch" style="">&nbsp;
+                            <label for="rdExactMatch">Exact Match</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="vertical-align: top">
+                            <input type="radio" name="SearchType" id="rdBusinessName" value="BusinessName" checked="checked" style="">&nbsp;<label for="rdBusinessName">Business Name:</label>
+                        </td>
+                        <td>
+                            <input type="text" name="txtBusinessName" id="txtBusinessName" maxlength="200" style="width: 300px;" selectelement="#rdBusinessName" rule="{'Business Name','required'}"><br>
+                            <span class="info"><strong>Note:</strong> Enter a business name to lookup (This can be partial or full name)</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <input type="radio" name="SearchType" id="rdControlNo" value="ControlNo" style="">&nbsp;<label for="rdBusinessID">Control Number:</label>
+                        </td>
+                        <td>
+                            <input type="text" name="txtControlNo" id="txtControlNo" maxlength="30" style="width: 300px;" selectelement="#rdControlNo" disabledrule="{'Control Number','required'}">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <input type="radio" name="SearchType" id="rdAgent" value="AgentName" style="">&nbsp;<label for="rdAgent">Registered Agent Name:</label>
+                        </td>
+                        <td>
+                            <input type="text" name="txtAgent" id="txtAgent" maxlength="200" style="width: 300px;" selectelement="#rdAgent" disabledrule="{'Registered Agent Name','required'}">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <input type="radio" name="SearchType" id="rdPrincipal" value="PrincipalName" style="">&nbsp;<label for="rdPrincipal">Officer Name:</label>
+                        </td>
+                        <td>
+                            <input type="text" name="txtPrincipal" id="txtPrincipal" maxlength="200" style="width: 300px;" selectelement="#rdPrincipal" disabledrule="{'Officer Name','required'}">
+                        </td>
+                    </tr>
+                    <tr style="display: none;">
+                        <td>
+                            <input type="radio" name="SearchType" id="desAgent" value="DesignatedAgentName" style="">&nbsp;<label for="desAgent">Designated Agent Name:</label>
+                        </td>
+                        <td>
+                            <input type="text" name="txtdesAgent" id="txtdesAgent" maxlength="200" style="width: 300px;" selectelement="#desAgent" disabledrule="{'Designated Agent Name','required'}">
+                        </td>
+                    </tr>
+                </tbody></table>
+            </div>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            <table width="100%">
+                <tbody><tr>
+                    <td style="width: 150px;">
+                        <input type="button" name="" value="Back" class="button" onclick="submitBack()" style="">
+                    </td>
+                    <td style="text-align: center">
+                        <input type="button" name="btnSearch" id="btnSearch" value="Search" class="button" style="">
+                        <input type="button" name="Reset" value="Reset" class="button" onclick="clearValues()" style="">
+                    </td>
+                    <td style="width: 150px;"></td>
+                </tr>
+            </tbody></table>
+        </td>
+    </tr>
+    <tr>
+        <td>&nbsp;</td>
+    </tr>
+    <tr>
+        <td>
+            <div class="data_pannel">
+                <table width="100%" border="0" cellspacing="0" cellpadding="5">
+                    <tbody>
+                        <tr>
+                            <td align="left" class="inner_databg">Instructions</td>
+                        </tr>
+
+                        <tr>
+                            <td align="left" class="font_orange">This search provides access to all the entity’s information of record with the Secretary of State. For information on ordering certificates and/or copies of documents, refer to the HOME tab under the top menu.</td>
+                        </tr>
+
+                        <tr>
+                            <td align="left" class="font_orange"><strong>Note:</strong> This search is not intended to serve as a name availability search. </td>
+                        </tr>
+
+                        <tr>
+                            <td width="22%" align="left">To conduct a search:
+                                <ul>
+                                    <li>Select the applicable search type.</li>
+                                    <li>Enter the name or number required you wish to search.</li>
+                                    <li>Select the <strong>Search</strong> button.</li>
+                                </ul>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </td>
+    </tr>
+</tbody></table>
+
+</div><br>
+<br>
+<script type="text/javascript">
+
+    $(document).ready(function () {
+        $("#txtBusinessName").focus();
+        $('#tdSOPSearch').css("color", "#d2d2d2");
+        $('#tdTrademarksSearch').css("color", "#d2d2d2");
+        $('#tdBusinessSearch').css("cursor", "");
+        $('#tdBusinessSearch').prop('onclick', null);
+    });
+
+
+    $(function () {
+        $("[selectElement]").bind("click focus", function (e) {
+            var selValue = $($(this).attr("selectElement")).prop("checked", true).val().toLowerCase();
+            $("[selectElement]").each(function () {
+                $(this).disableRule();
+            });
+            $(this).enableRule();
+            // disabled criteria
+            $("[name='SearchCriteria']").prop("disabled", (selValue == 'controlno' || selValue == 'licenseno'));
+        }).keypress(function () {
+            // clear values
+            var currentEle = this;
+            $("[selectElement]").each(function () {
+                if (this != currentEle)
+                    $(this).val("");
+            });
+        });
+
+        $("[name='SearchType']").change(function () {
+            $("[selectelement = #" + $(this).attr("id") + "]").trigger("click");
+        });
+
+        $('#btnSearch').click(function () {
+            if (!$v.validate('basetable')) return false;
+            var searchTypeObj = $("[name='SearchType']:checked");
+            if (searchTypeObj.val().toLowerCase() == "licenseno") {
+                errorDialog("Coming Soon.");
+                return false;
+            }
+            var data = {
+                SearchType: searchTypeObj.val(),
+                SearchValue: $("[selectelement='" + "#" + searchTypeObj.attr("id") + "']").val(),
+                SearchCriteria: $("[name='SearchCriteria']:checked").val()
+            };
+            $.submitForm('/BusinessSearch', { search: data });
+        });
+
+        $("#txtBusinessName, #txtControlNo, #txtAgent, #txtPrincipal, #txtdesAgent").keypress(function (e) {
+            if (e.keyCode == 13 || e.which == 13)
+                $("#btnSearch").trigger("click");
+        });
+    });
+
+    function submitBack() {
+        var isOnline = 'True';
+        if (isOnline == "True")
+            window.location.href = '/';
+        else
+            window.location.href = '/Dashboard/Home';
+    }
+
+    function clearValues() {
+        $("#rdStartsWith").prop("checked", true);
+        $("#rdBusinessName").prop("checked", true);
+        $("[selectelement]").val("");
+        $("#txtBusinessName").focus();
+    }
+
+    function BusinessSearch() {
+        window.location.href = '/BusinessSearch';
+    }
+
+    function SOPSearch() {
+        window.location.href = '/SOPSearch';
+    }
+
+    function TrademarksSearch() {
+        window.location.href = '/TrademarksSearch';
+      }
+</script>
+
+
+    <div class="container-fluid">
+        <div class="row">
+            <div class="footer">
+                Office of the Georgia Secretary of State Attn: 2 MLK, Jr. Dr. Suite 313, Floyd West Tower Atlanta, GA 30334-1530, Phone: (404) 656-2817 Toll-free: (844) 753-7825, WEBSITE: https://sos.ga.gov/
+                <br>© 2015 PCC Technology Group. All Rights Reserved. Version 6.2.19
+                 <span style="float: right; padding-right: 10px"><a href="javascript:void(0);" onclick="javascript:return ShowReportDialog();" style="color: #FFF; font-weight: bold; font-size: 8pt">Report a Problem?</a></span>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) 
+<script src="js/jquery.js"></script> -->
+    <!-- Include all compiled plugins (below), or include individual files as needed 
+<script src="js/bootstrap.js"></script>-->
+
+
+<div class="ui-dialog ui-widget ui-widget-content ui-corner-all ui-front ui-draggable" tabindex="-1" role="dialog" aria-describedby="process" aria-labelledby="ui-id-1" style="display: none;"><div class="ui-dialog-titlebar ui-widget-header ui-corner-all ui-helper-clearfix ui-draggable-handle"><span id="ui-id-1" class="ui-dialog-title">&nbsp;</span><button type="button" class="ui-button ui-widget ui-state-default ui-corner-all ui-button-icon-only ui-dialog-titlebar-close" role="button" title="Close"><span class="ui-button-icon-primary ui-icon ui-icon-closethick"></span><span class="ui-button-text">Close</span></button></div><div id="process" class="ui-dialog-content ui-widget-content" style="text-align: center; vertical-align: middle; padding-top: 5px; display: block;"><img src="../../Themes/base/Images/ajax-loader.gif"><br><span>Please wait...</span></div></div><div class="ui-dialog ui-widget ui-widget-content ui-corner-all ui-front dilogcentered ui-dialog-buttons ui-draggable" tabindex="-1" role="dialog" aria-describedby="errorDialog" aria-labelledby="ui-id-2" style="height: auto; width: auto; top: 382px; left: 558px; display: block; z-index: 101;"><div class="ui-dialog-titlebar ui-widget-header ui-corner-all ui-helper-clearfix ui-draggable-handle"><span id="ui-id-2" class="ui-dialog-title">Alert</span><button type="button" class="ui-button ui-widget ui-state-default ui-corner-all ui-button-icon-only ui-dialog-titlebar-close" role="button" title="Close" style="display: none;"><span class="ui-button-icon-primary ui-icon ui-icon-closethick"></span><span class="ui-button-text">Close</span></button></div><div id="errorDialog" style="padding: 20px 30px 0px 20px; display: block; width: auto; min-height: 36px; max-height: none; height: auto;" class="ui-dialog-content ui-widget-content"><ul class="errors" style="text-align:left;padding:0px 0px 0px 10px;"><li class="error_message" style="padding:0px 0px 0px 22px">No data found.</li></ul></div><div class="ui-dialog-buttonpane ui-widget-content ui-helper-clearfix" style="float: none; text-align: center; width: auto;"><div class="ui-dialog-buttonset" style="float: none; text-align: center; width: auto;"><button type="button" class="ui-button ui-widget ui-state-default ui-corner-all ui-button-text-only ui-state-focus" role="button"><span class="ui-button-text">OK</span></button></div></div></div><div class="ui-widget-overlay ui-front" style="z-index: 100;"></div></body></html>

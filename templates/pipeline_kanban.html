@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Pipeline — GA Leads{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="fw-bold mb-0">Pipeline</h4>
+  <div class="d-flex gap-2 align-items-center">
+    <a href="/leads" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-table me-1"></i>Table
+    </a>
+    <a href="/pipeline" class="btn btn-sm btn-dark">
+      <i class="bi bi-kanban me-1"></i>Kanban
+    </a>
+  </div>
+</div>
+
+<!-- Stage summary strip -->
+<div class="d-flex gap-2 mb-3 flex-wrap">
+  {% for stage in stages_def %}
+  {% set leads = stages[stage.key] %}
+  {% set n_overdue = leads | selectattr('_overdue') | list | length %}
+  {% set n_stale   = leads | selectattr('_stale')   | list | length %}
+  <div class="badge rounded-pill px-3 py-2 d-flex align-items-center gap-2"
+       style="background:{{ stage.color }}22; color:{{ stage.color }}; border:1px solid {{ stage.color }}44">
+    <span class="fw-bold">{{ stage.label }}</span>
+    <span class="fw-normal">{{ leads | length }}</span>
+    {% if n_overdue %}<span class="badge bg-danger ms-1">{{ n_overdue }} overdue</span>{% endif %}
+    {% if n_stale %}<span class="badge bg-warning text-dark ms-1">{{ n_stale }} stale</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Kanban board -->
+<div class="d-flex gap-3 pb-3 overflow-auto" style="align-items:flex-start; min-height:70vh">
+  {% for stage in stages_def %}
+  {% set col_leads = stages[stage.key] %}
+  <div class="flex-shrink-0" style="width:230px">
+
+    <!-- Column header -->
+    <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+      <div>
+        <span class="fw-bold small" style="color:{{ stage.color }}">{{ stage.label }}</span>
+        <span class="text-muted small ms-1">{{ stage.sublabel }}</span>
+      </div>
+      <span class="badge rounded-pill bg-secondary">{{ col_leads | length }}</span>
+    </div>
+
+    <!-- Cards -->
+    <div class="vstack gap-2">
+      {% for lead in col_leads %}
+      {% set border_class = 'border-danger' if lead._overdue else ('border-warning' if lead._stale else '') %}
+      <div class="card task-card p-0 {{ 'border ' + border_class if border_class else '' }}"
+           style="font-size:.82rem">
+        <div class="card-body p-2">
+
+          <!-- Priority + name -->
+          <div class="d-flex justify-content-between align-items-start mb-1">
+            <span class="badge badge-{{ lead.priority }} text-white">{{ lead.priority }}</span>
+            {% if lead._overdue %}
+            <span class="badge bg-danger" title="Task overdue">!</span>
+            {% elif lead._stale %}
+            <span class="badge bg-warning text-dark" title="No activity recently">~</span>
+            {% endif %}
+          </div>
+
+          <div class="fw-semibold text-truncate" title="{{ lead.entity_name }}">
+            {{ lead.entity_name }}
+          </div>
+          <div class="text-muted text-truncate" style="font-size:.78rem">
+            {{ lead.industry_category or '—' }}
+          </div>
+
+          <!-- Organizer + phone -->
+          {% if lead.organizer_name %}
+          <div class="text-muted mt-1 text-truncate" style="font-size:.78rem">
+            {{ lead.organizer_name.split()[0] if lead.organizer_name else '' }}
+            {% if lead.filer_phone %}
+            · <a href="tel:{{ lead.filer_phone }}" class="text-muted">{{ lead.filer_phone }}</a>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          <!-- Next task -->
+          {% if lead._next_task_label %}
+          <div class="mt-2 d-flex align-items-center gap-1">
+            <span class="step-{{ lead._next_task_type }}">
+              {% if lead._next_task_type == 'call' %}📞
+              {% elif lead._next_task_type == 'email' %}✉️
+              {% elif lead._next_task_type == 'vm' %}📱
+              {% elif lead._next_task_type == 'message' %}💬
+              {% else %}📋{% endif %}
+            </span>
+            <span class="text-truncate" style="font-size:.78rem">{{ lead._next_task_label }}</span>
+          </div>
+          {% if lead._next_due %}
+          <div class="text-muted" style="font-size:.75rem">
+            Due {{ lead._next_due }}
+            {% if lead._overdue %}<span class="text-danger fw-bold"> OVERDUE</span>{% endif %}
+          </div>
+          {% endif %}
+          {% elif stage.key == 'new' %}
+          <div class="mt-2">
+            <form method="POST" action="/leads/{{ lead.control_number }}/start">
+              <button class="btn btn-xs btn-dark w-100" style="font-size:.75rem;padding:2px 6px">
+                🚀 Start Cadence
+              </button>
+            </form>
+          </div>
+          {% elif stage.key == 'closed' %}
+          <div class="mt-1">
+            <span class="badge bg-secondary">{{ lead.outreach_status }}</span>
+          </div>
+          {% endif %}
+
+          <!-- Score + open link -->
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            <span class="text-muted" style="font-size:.75rem">Score {{ lead.fit_score or 0 }}</span>
+            <a href="/leads/{{ lead.control_number }}"
+               class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size:.75rem">
+              Open →
+            </a>
+          </div>
+
+        </div>
+      </div>
+      {% else %}
+      <div class="rounded p-3 text-center text-muted"
+           style="border:2px dashed #dee2e6; font-size:.8rem">
+        No leads
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}
+{% block scripts %}
+<style>
+  /* Smooth horizontal scroll on the board */
+  .overflow-auto { -webkit-overflow-scrolling: touch; }
+  .overflow-auto::-webkit-scrollbar { height: 6px; }
+  .overflow-auto::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+</style>
+{% endblock %}

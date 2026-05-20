@@ -1,0 +1,23 @@
+# Tunable weights for the fit-score model. Total possible ~120, capped at 100.
+
+industry:
+  tier_1_naics_match: 30
+  tier_2_naics_match: 20
+  tier_3_naics_match: 15
+  tier_1_keyword_match: 25
+  tier_2_keyword_match: 18
+  tier_3_keyword_match: 12
+
+owner_operator_signals:
+  residential_registered_agent: 10
+  individual_organizer: 10
+  llc_not_inc: 5
+
+recency:
+  within_14_days: 5
+  within_7_days: 3
+
+priority_tiers:
+  hot_threshold: 80
+  warm_threshold: 60
+  cold_threshold: 40

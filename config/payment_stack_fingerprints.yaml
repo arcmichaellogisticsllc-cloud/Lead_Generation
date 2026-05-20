@@ -1,0 +1,52 @@
+# Detect what payment/operations stack a business already uses
+# Negative weights mean "already integrated, harder to crack"
+# Look for these strings in HTML/JS of their website
+
+payment_processors:
+  square:
+    fingerprints: ["squareup.com", "web.squarecdn.com", "sq-payment-form", "square.site"]
+    weight: -20
+  stripe:
+    fingerprints: ["js.stripe.com", "stripe-elements", "checkout.stripe.com"]
+    weight: -20
+  toast:
+    fingerprints: ["toasttab.com", "pos.toasttab.com"]
+    weight: -20
+  clover:
+    fingerprints: ["clover.com/sdk", "clover-ios", "clover.network"]
+    weight: -20
+  paypal:
+    fingerprints: ["paypalobjects.com", "paypal-button", "paypal.com/sdk"]
+    weight: -15
+
+vertical_saas:
+  servicetitan:
+    fingerprints: ["servicetitan.com", "servicetitan-customerportal"]
+    weight: -15
+  housecall_pro:
+    fingerprints: ["housecallpro.com", "powered by Housecall"]
+    weight: -15
+  jobber:
+    fingerprints: ["getjobber.com", "jobber-booking"]
+    weight: -15
+  mindbody:
+    fingerprints: ["mindbodyonline.com", "mindbody.io"]
+    weight: -15
+  vagaro:
+    fingerprints: ["vagaro.com"]
+    weight: -15
+  booker:
+    fingerprints: ["booker.com"]
+    weight: -10
+
+# Positive signals (need our product)
+opportunity_signals:
+  no_website:
+    weight: 15
+  no_online_payment_detected:
+    weight: 10
+  invoice_language:
+    fingerprints: ["call for estimate", "request a quote", "we'll invoice", "send invoice", "free estimate"]
+    weight: 8
+  phone_only:
+    weight: 6

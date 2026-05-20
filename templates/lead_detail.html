@@ -1,0 +1,367 @@
+{% extends "base.html" %}
+{% block title %}{{ lead.entity_name }} — GA Leads{% endblock %}
+{% block content %}
+
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <a href="/leads" class="text-muted text-decoration-none small">← Pipeline</a>
+    <h3 class="fw-bold mb-0 mt-1">{{ lead.entity_name }}</h3>
+    <span class="badge badge-{{ lead.priority }} text-white me-1">{{ lead.priority }}</span>
+    <span class="badge bg-secondary">{{ lead.outreach_status or 'NEW' }}</span>
+    <span class="text-muted ms-2 small">Score: {{ lead.fit_score or 0 }}</span>
+  </div>
+  <div class="d-flex gap-2">
+    <form method="POST" action="/leads/{{ lead.control_number }}/enrich">
+      <button class="btn btn-outline-secondary btn-sm" title="Re-run website + payment + social profile search">
+        <i class="bi bi-arrow-clockwise me-1"></i>Enrich
+      </button>
+    </form>
+    {% if not cadence.active %}
+    <form method="POST" action="/leads/{{ lead.control_number }}/start">
+      <button class="btn btn-dark">🚀 Start 12-Step Cadence</button>
+    </form>
+    {% else %}
+    <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#outcomeModal">
+      Close Lead
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-4">
+
+  <!-- LEFT: Contact card + cadence -->
+  <div class="col-lg-4">
+
+    <!-- Contact info -->
+    <div class="card task-card mb-3">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">Contact</h6>
+        <table class="table table-sm table-borderless mb-0">
+          <tr><td class="text-muted">Organizer</td><td class="fw-semibold">{{ lead.organizer_name or '—' }}</td></tr>
+          <tr><td class="text-muted">Phone</td>
+              <td>{% if lead.filer_phone %}<a href="tel:{{ lead.filer_phone }}">{{ lead.filer_phone }}</a>{% else %}—{% endif %}</td></tr>
+          <tr><td class="text-muted">Email</td>
+              <td>{% if lead.filer_email %}<a href="mailto:{{ lead.filer_email }}">{{ lead.filer_email }}</a>{% else %}—{% endif %}</td></tr>
+          <tr><td class="text-muted">Address</td><td>{{ lead.principal_office_address or '—' }}</td></tr>
+          <tr><td class="text-muted">Category</td><td>{{ lead.industry_category or '—' }}</td></tr>
+          <tr><td class="text-muted">Formed</td><td>{{ lead.formation_date or '—' }}</td></tr>
+          {% if lead.website %}
+          <tr><td class="text-muted">Website</td>
+              <td><a href="{{ lead.website }}" target="_blank">{{ lead.website[:30] }}</a></td></tr>
+          {% endif %}
+          {% if lead.detected_payment_processor %}
+          <tr><td class="text-muted">Processor</td>
+              <td><span class="badge bg-warning text-dark">{{ lead.detected_payment_processor }}</span></td></tr>
+          {% endif %}
+          {% if lead.review_snippet %}
+          <tr>
+            <td class="text-muted align-top">Reviews</td>
+            <td>
+              <div class="small text-muted" style="font-size:.78rem;line-height:1.4">
+                {{ lead.review_snippet[:160] }}…
+                {% if lead.review_has_payment_friction %}
+                <span class="badge bg-warning text-dark ms-1">payment friction</span>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endif %}
+        </table>
+      </div>
+    </div>
+
+    <!-- Online profiles -->
+    {% set profiles = [
+      ("facebook_url",   "bi-facebook",   "#1877f2", "Facebook"),
+      ("instagram_url",  "bi-instagram",  "#e1306c", "Instagram"),
+      ("linkedin_url",   "bi-linkedin",   "#0077b5", "LinkedIn"),
+      ("yelp_url",       "bi-star-fill",  "#d32323", "Yelp"),
+      ("angi_url",       "bi-tools",      "#ff6e31", "Angi"),
+      ("google_maps_url","bi-geo-alt-fill","#4285f4","Google Maps"),
+    ] %}
+    {% set has_any_profile = lead.facebook_url or lead.instagram_url or lead.linkedin_url
+       or lead.yelp_url or lead.angi_url or lead.google_maps_url %}
+
+    <div class="card task-card mb-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="fw-bold mb-0">Online Profiles</h6>
+          {% if not lead.profiles_searched %}
+          <span class="text-muted small">Not searched yet — click Enrich</span>
+          {% endif %}
+        </div>
+        {% if has_any_profile %}
+        <div class="d-flex flex-wrap gap-2">
+          {% for field, icon, color, label in profiles %}
+          {% if lead[field] %}
+          <a href="{{ lead[field] }}" target="_blank" rel="noopener"
+             class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
+            <i class="{{ icon }}" style="color:{{ color }}"></i>
+            {{ label }}
+          </a>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% elif lead.profiles_searched %}
+        <p class="text-muted small mb-0">No public profiles found for this business.</p>
+        {% else %}
+        <p class="text-muted small mb-0">
+          Click <strong>Enrich</strong> above to search Facebook, Instagram, LinkedIn, Yelp, Angi, and Google Maps.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Cadence progress -->
+    <div class="card task-card">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">12-Step Cadence
+          {% if cadence.active %}
+          <span class="badge bg-success ms-1">{{ cadence.completed }}/{{ cadence.total }}</span>
+          {% endif %}
+        </h6>
+
+        {% if cadence.active %}
+        <div class="vstack gap-1">
+          {% for task in cadence.tasks %}
+          {% set is_next = cadence.next_task and task.id == cadence.next_task.id %}
+          <div class="d-flex align-items-center gap-2 py-1 px-2 rounded
+            {% if task.status == 'done' %}step-done{% elif is_next %}bg-light border{% endif %}">
+
+            <span class="step-{{ task.task_type }}">
+              {% if task.task_type == 'call' %}📞
+              {% elif task.task_type == 'email' %}✉️
+              {% elif task.task_type == 'vm' %}📱
+              {% elif task.task_type == 'message' %}💬
+              {% else %}📋{% endif %}
+            </span>
+
+            <div class="flex-grow-1 small">
+              <span class="{% if task.status == 'done' %}text-decoration-line-through text-muted{% endif %}">
+                {{ task.label }}
+              </span>
+              <span class="text-muted ms-1">D{{ task.cadence_day }}</span>
+              {% if task.outcome %}
+              <span class="badge bg-light text-dark ms-1">{{ task.outcome }}</span>
+              {% endif %}
+            </div>
+
+            {% if task.status == 'done' %}
+            <i class="bi bi-check-circle-fill text-success"></i>
+            {% elif is_next %}
+            <button class="btn btn-sm btn-success py-0 px-2 complete-btn"
+                    data-task-id="{{ task.id }}"
+                    data-type="{{ task.task_type }}"
+                    data-cn="{{ lead.control_number }}">✓</button>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+
+        {% else %}
+        <p class="text-muted small">No cadence running. Start one to generate all 12 tasks with due dates.</p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT: Email drafts + log -->
+  <div class="col-lg-8">
+
+    <!-- Email drafts (accordion) -->
+    <div class="card task-card mb-3">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">Email Drafts</h6>
+        <div class="accordion accordion-flush" id="emailAccordion">
+          {% for step, tmpl in rendered.items() if step != 2 %}
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button collapsed py-2 small" type="button"
+                      data-bs-toggle="collapse" data-bs-target="#email-{{ step }}">
+                Step {{ step }} —
+                {% if step == 3 %}Day 1 Intro
+                {% elif step == 8 %}Day 6 Bump
+                {% elif step == 10 %}Day 9 Proof Point
+                {% elif step == 12 %}Day 12 Close Loop
+                {% endif %}
+              </button>
+            </h2>
+            <div id="email-{{ step }}" class="accordion-collapse collapse">
+              <div class="accordion-body p-2">
+                <div class="email-draft p-3">
+                  <div class="text-muted small mb-1">
+                    <strong>To:</strong> {{ lead.filer_email or '[email]' }}
+                    &nbsp;|&nbsp;
+                    <strong>Subject:</strong> {{ tmpl.subject }}
+                  </div>
+                  <hr class="my-2">
+                  <pre class="mb-0" style="white-space:pre-wrap;font-family:inherit">{{ tmpl.body }}</pre>
+                </div>
+                <div class="mt-2 d-flex gap-2 flex-wrap">
+                  {% if tmpl.mailto %}
+                  <a href="{{ tmpl.mailto }}" class="btn btn-sm btn-dark">
+                    <i class="bi bi-envelope me-1"></i>Open in Mail
+                  </a>
+                  {% endif %}
+                  <button class="btn btn-sm btn-outline-secondary copy-btn"
+                          data-text="{{ tmpl.body|replace('"', '&quot;') }}">
+                    <i class="bi bi-clipboard"></i> Copy
+                  </button>
+                  <a href="/templates#step-{{ step }}" class="btn btn-sm btn-link text-muted p-0 align-self-center">
+                    Edit →
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- VM script -->
+        {% if rendered[2] %}
+        <div class="mt-3 p-3 bg-light rounded">
+          <div class="small text-muted fw-bold mb-1">📱 VM Script</div>
+          <em class="small">{{ rendered[2].body }}</em>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Activity log -->
+    <div class="card task-card">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">Activity Log</h6>
+        {% if log %}
+        <div class="vstack gap-2">
+          {% for entry in log %}
+          <div class="d-flex gap-2 align-items-start small">
+            <span class="text-muted" style="min-width:130px">
+              {{ entry.logged_at[:16] if entry.logged_at else '' }}
+            </span>
+            <span class="step-{{ entry.task_type }}">
+              {% if entry.task_type == 'call' %}📞
+              {% elif entry.task_type == 'email' %}✉️
+              {% elif entry.task_type == 'vm' %}📱
+              {% elif entry.task_type == 'outcome' %}🏁
+              {% else %}📋{% endif %}
+            </span>
+            <div>
+              <span class="fw-semibold">{{ entry.task_type|title }}</span>
+              {% if entry.outcome %}
+              <span class="badge bg-light text-dark ms-1">{{ entry.outcome }}</span>
+              {% endif %}
+              {% if entry.notes %}
+              <div class="text-muted">{{ entry.notes }}</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted small mb-0">No activity yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Complete task modal -->
+<div class="modal fade" id="completeModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title">Log outcome</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="completeForm" action="/leads/{{ lead.control_number }}/complete_task">
+        <input type="hidden" name="task_id" id="modal-task-id">
+        <div class="modal-body">
+          <div id="outcome-options"></div>
+          <textarea name="notes" class="form-control mt-2" rows="2"
+                    placeholder="Notes (optional)"></textarea>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="submit" class="btn btn-success btn-sm">Save & Continue</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Close lead modal -->
+<div class="modal fade" id="outcomeModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title">Close this lead</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="/leads/{{ lead.control_number }}/outcome">
+        <div class="modal-body">
+          {% for outcome, label, color in [
+            ("converted",  "✅ Converted — they're in",     "success"),
+            ("nurture_90", "🔄 Nurture — check back 90d",  "warning"),
+            ("dead",       "❌ Dead — not interested",      "danger"),
+            ("no_contact", "👻 No contact — never reached", "secondary"),
+          ] %}
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="radio" name="outcome"
+                   value="{{ outcome }}" id="out-{{ outcome }}"
+                   {% if loop.first %}checked{% endif %}>
+            <label class="form-check-label text-{{ color }}" for="out-{{ outcome }}">
+              {{ label }}
+            </label>
+          </div>
+          {% endfor %}
+          <textarea name="notes" class="form-control mt-2" rows="2"
+                    placeholder="Final notes"></textarea>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="submit" class="btn btn-dark btn-sm">Close Lead</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const callOpts  = ["connected","no_answer","vm_left","wrong_number","callback_scheduled"];
+const emailOpts = ["sent","replied","bounced"];
+const otherOpts = ["done","skipped"];
+
+document.querySelectorAll('.complete-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const taskId = btn.dataset.taskId;
+    const type   = btn.dataset.type;
+    const opts   = (type==='call'||type==='vm') ? callOpts :
+                   (type==='email') ? emailOpts : otherOpts;
+    document.getElementById('modal-task-id').value = taskId;
+    const div = document.getElementById('outcome-options');
+    div.innerHTML = opts.map(o =>
+      `<div class="form-check">
+        <input class="form-check-input" type="radio" name="outcome" value="${o}" id="o-${o}"
+               ${o===opts[0]?'checked':''}>
+        <label class="form-check-label" for="o-${o}">${o.replace(/_/g,' ')}</label>
+       </div>`
+    ).join('');
+    new bootstrap.Modal(document.getElementById('completeModal')).show();
+  });
+});
+
+document.querySelectorAll('.copy-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const text = btn.dataset.text.replace(/&quot;/g, '"');
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = '✓ Copied';
+      setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy'; }, 1500);
+    });
+  });
+});
+</script>
+{% endblock %}

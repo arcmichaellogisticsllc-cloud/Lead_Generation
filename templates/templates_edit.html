@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Email Templates — GA Leads{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="fw-bold mb-0">Email Templates</h4>
+    <p class="text-muted small mb-0">
+      <strong>Variables:</strong>
+      <code>{{first_name}}</code>
+      <code>{{business_name}}</code>
+      <code>{{business_type}}</code>
+      <code>{{city}}</code>
+      <code>{{nearby_city}}</code>
+      <code>{{stat}}</code> — industry-matched proof point<br>
+      <code>{{pain_point}}</code> — industry-specific opening question
+      &nbsp;·&nbsp;
+      <code>{{outcome_context}}</code> — adaptive opener based on prior outreach
+      &nbsp;·&nbsp;
+      <code>{{review_hook}}</code> — hook from online reviews (if found)
+      &nbsp;·&nbsp;
+      <code>{{sender_email}}</code> — your send-from address
+    </p>
+  </div>
+</div>
+
+<div class="row g-4">
+{% for step, tmpl in templates.items() %}
+<div class="col-12 col-xl-6" id="step-{{ step }}">
+  <div class="card task-card">
+    <div class="card-body">
+      <h6 class="fw-bold mb-1">{{ tmpl.name }}</h6>
+      <div class="text-muted small mb-3">
+        {% for touch in cadence_def if touch.step == step %}
+          Day {{ touch.day }} · {{ touch.label }}
+        {% endfor %}
+        {% if step == 2 %}Day 1 · Voicemail Script{% endif %}
+      </div>
+
+      <form method="POST" action="/templates/save">
+        <input type="hidden" name="step" value="{{ step }}">
+        {% if tmpl.subject is not none and tmpl.subject != '' or step != 2 %}
+        <div class="mb-2">
+          <label class="form-label small text-muted mb-1">Subject</label>
+          <input type="text" name="subject" class="form-control form-control-sm"
+                 value="{{ tmpl.subject or '' }}"
+                 placeholder="{{ 'N/A for VM' if step == 2 else 'Subject line' }}">
+        </div>
+        {% endif %}
+        <div class="mb-2">
+          <label class="form-label small text-muted mb-1">Body</label>
+          <textarea name="body" class="form-control template-body">{{ tmpl.body }}</textarea>
+        </div>
+        <div class="d-flex justify-content-between align-items-center">
+          <span class="text-muted small">
+            Last saved: {{ tmpl.updated_at[:10] if tmpl.updated_at else 'default' }}
+          </span>
+          <button type="submit" class="btn btn-sm btn-dark">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+</div>
+
+<!-- Proof points reference -->
+<div class="card task-card mt-4">
+  <div class="card-body">
+    <h6 class="fw-bold mb-3">
+      Proof Point Pool
+      <span class="text-muted fw-normal small ms-1">— used as <code>{{stat}}</code> in Day 9 template</span>
+    </h6>
+    <div class="row g-2">
+      {% for p in proof_points %}
+      <div class="col-12 col-md-6">
+        <div class="bg-light rounded p-2 small d-flex gap-2">
+          <span class="text-muted">{{ loop.index }}.</span>
+          <span>{{ p }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="text-muted small mt-2 mb-0">
+      The proof point is selected per lead based on their control number.
+      Edit <code>PROOF_POINTS</code> in <code>app.py</code> to add your own.
+    </p>
+  </div>
+</div>
+
+{% endblock %}

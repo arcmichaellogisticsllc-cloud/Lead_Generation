@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}GA Payment Leads{% endblock %}</title>
+  <link href="/static/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/css/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    body { background: #f8f9fa; font-size: 0.92rem; }
+    .navbar { background: #1a1a2e !important; }
+    .navbar-brand { font-weight: 700; letter-spacing: .5px; color: #e2b96f !important; }
+    .nav-link { color: rgba(255,255,255,.8) !important; }
+    .nav-link.active { color: #e2b96f !important; }
+
+    .priority-HOT  { background: #ff6b6b22; border-left: 3px solid #ff6b6b; }
+    .priority-WARM { background: #ffd93d22; border-left: 3px solid #ffd93d; }
+    .priority-COLD { background: #6bcbff22; border-left: 3px solid #6bcbff; }
+
+    .badge-HOT  { background: #ff6b6b; }
+    .badge-WARM { background: #f5a623; }
+    .badge-COLD { background: #4a9eff; }
+
+    .step-done    { opacity: .45; }
+    .step-pending { font-weight: 600; }
+    .step-call    { color: #198754; }
+    .step-email   { color: #0d6efd; }
+    .step-vm      { color: #6f42c1; }
+    .step-message { color: #fd7e14; }
+    .step-log     { color: #6c757d; }
+
+    .cadence-timeline { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+    .cadence-dot { width: 10px; height: 10px; border-radius: 50%; background: #dee2e6; }
+    .cadence-dot.done { background: #198754; }
+    .cadence-dot.pending { background: #dee2e6; border: 2px solid #0d6efd; }
+    .cadence-dot.overdue { background: #ff6b6b; }
+
+    .task-card { border: none; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .task-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,.12); }
+
+    .email-draft { background: #fff; border: 1px solid #dee2e6;
+                   border-radius: 6px; font-family: monospace; font-size: .85rem; }
+    textarea.template-body { min-height: 160px; font-family: monospace; font-size: .85rem; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg mb-4">
+  <div class="container-fluid px-4">
+    <a class="navbar-brand" href="/">⚡ GA Leads</a>
+    <div class="navbar-nav ms-3 flex-row gap-3">
+      <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/">Dashboard</a>
+      <a class="nav-link {% if request.path in ('/leads','/pipeline') or (request.path.startswith('/leads/') and '/leads' in request.path) %}active{% endif %}" href="/pipeline">Pipeline</a>
+      <a class="nav-link {% if '/templates' in request.path %}active{% endif %}" href="/templates">Templates</a>
+      <a class="nav-link {% if '/runs' in request.path %}active{% endif %}" href="/runs">Runs</a>
+    </div>
+
+    <!-- Notification bell -->
+    <div class="ms-auto dropdown">
+      <button class="btn btn-link nav-link position-relative p-1" type="button"
+              id="notifDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+              style="color:rgba(255,255,255,.8)">
+        <i class="bi bi-bell-fill fs-5"></i>
+        {% if notif_count %}
+        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+              style="font-size:.6rem">
+          {{ notif_count if notif_count < 100 else '99+' }}
+        </span>
+        {% endif %}
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end shadow" id="notifMenu"
+          style="min-width:320px;max-height:420px;overflow-y:auto" aria-labelledby="notifDropdown">
+        <li class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+          <span class="fw-bold small">Notifications</span>
+          {% if notif_count %}
+          <form method="POST" action="/notifications/read" class="mb-0">
+            <button class="btn btn-link btn-sm p-0 text-muted" style="font-size:.8rem">
+              Mark all read
+            </button>
+          </form>
+          {% endif %}
+        </li>
+        {% if notif_items %}
+        {% for n in notif_items %}
+        <li>
+          <a class="dropdown-item py-2 px-3 {% if not n.read %}bg-light{% endif %}"
+             href="{{ n.link or '#' }}" style="white-space:normal">
+            <div class="d-flex gap-2 align-items-start">
+              <span style="font-size:1rem">{{ n.icon }}</span>
+              <div>
+                <div class="fw-semibold" style="font-size:.83rem">{{ n.title }}</div>
+                {% if n.body %}
+                <div class="text-muted" style="font-size:.78rem">{{ n.body }}</div>
+                {% endif %}
+                <div class="text-muted" style="font-size:.73rem">
+                  {{ n.created_at[:16] if n.created_at else '' }}
+                </div>
+              </div>
+            </div>
+          </a>
+        </li>
+        {% endfor %}
+        {% else %}
+        <li><p class="text-muted small px-3 py-2 mb-0">No new notifications</p></li>
+        {% endif %}
+        <li class="border-top">
+          <a class="dropdown-item text-center small text-muted py-2" href="/runs">
+            View pipeline run history →
+          </a>
+        </li>
+      </ul>
+    </div>
+
+  </div>
+</nav>
+
+<div class="container-fluid px-4">
+  {% block content %}{% endblock %}
+</div>
+
+<script src="/static/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

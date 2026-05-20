@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Pipeline Runs — GA Leads{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="fw-bold mb-0">Pipeline Run History</h4>
+    <p class="text-muted small mb-0">Daily automated runs — most recent first</p>
+  </div>
+</div>
+
+{% if runs %}
+<div class="card task-card">
+  <div class="table-responsive">
+  <table class="table table-hover align-middle mb-0">
+    <thead class="table-dark">
+      <tr>
+        <th>Date / Time</th>
+        <th class="text-center">Scanned</th>
+        <th class="text-center">Kept</th>
+        <th class="text-center">PDFs</th>
+        <th class="text-center">Enriched</th>
+        <th>Range</th>
+        <th>Errors</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for run in runs %}
+    <tr {% if run.errors_list %}class="table-warning"{% endif %}>
+      <td>
+        <div class="fw-semibold">{{ run.run_date[:10] if run.run_date else '—' }}</div>
+        <div class="text-muted small">{{ run.run_date[11:16] if run.run_date else '' }}</div>
+      </td>
+      <td class="text-center fw-bold">{{ run.entities_discovered or 0 }}</td>
+      <td class="text-center">
+        {% if run.entities_kept %}
+        <span class="badge bg-success">+{{ run.entities_kept }}</span>
+        {% else %}
+        <span class="text-muted">0</span>
+        {% endif %}
+      </td>
+      <td class="text-center">{{ run.pdfs_downloaded or 0 }}</td>
+      <td class="text-center">{{ run.enrichment_completed or 0 }}</td>
+      <td>
+        <span class="text-muted small">
+          {{ run.date_range_start or '—' }} → {{ run.date_range_end or '—' }}
+        </span>
+      </td>
+      <td>
+        {% if run.errors_list %}
+        <span class="badge bg-danger" title="{{ run.errors_list | join(', ') }}">
+          {{ run.errors_list | length }} error{% if run.errors_list | length != 1 %}s{% endif %}
+        </span>
+        <div class="text-muted small mt-1">
+          {% for e in run.errors_list[:3] %}{{ e }}<br>{% endfor %}
+          {% if run.errors_list | length > 3 %}
+          <em>+{{ run.errors_list | length - 3 }} more</em>
+          {% endif %}
+        </div>
+        {% else %}
+        <span class="text-success small"><i class="bi bi-check-circle me-1"></i>Clean</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <div style="font-size:3rem">📋</div>
+  <h5 class="mt-3">No runs recorded yet</h5>
+  <p>Run <code>python scripts/daily_pipeline.py</code> to generate the first entry.</p>
+</div>
+{% endif %}
+
+{% endblock %}

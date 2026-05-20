@@ -1,0 +1,50 @@
+# Tier 1 — Field Service (70% focus)
+tier_1:
+  weight: 1.0
+  industries:
+    - naics: "238220"
+      name: "Plumbing, Heating & AC Contractors"
+    - naics: "238210"
+      name: "Electrical Contractors"
+    - naics: "238160"
+      name: "Roofing Contractors"
+    - naics: "238320"
+      name: "Painting Contractors"
+    - naics: "236220"
+      name: "Commercial General Contractors"
+    - naics: "236118"
+      name: "Residential Remodelers"
+    - naics: "561730"
+      name: "Landscaping Services"
+    - naics: "238350"
+      name: "Garage Door Services"
+    - naics: "238110"
+      name: "Concrete Contractors"
+
+# Tier 2 — Automotive (20% focus)
+tier_2:
+  weight: 0.7
+  industries:
+    - naics: "811111"
+      name: "General Automotive Repair"
+    - naics: "811121"
+      name: "Auto Body Shops"
+    - naics: "811192"
+      name: "Car Washes"
+    - naics: "441340"
+      name: "Tire Dealers"
+
+# Tier 3 — Recurring/Membership (10% focus)
+tier_3:
+  weight: 0.5
+  industries:
+    - naics: "621399"
+      name: "Med Spas"
+    - naics: "812111"
+      name: "Salons / Barber Shops (men)"
+    - naics: "812112"
+      name: "Salons / Barber Shops (women)"
+    - naics: "713940"
+      name: "Fitness Studios"
+    - naics: "621610"
+      name: "Massage Therapy"

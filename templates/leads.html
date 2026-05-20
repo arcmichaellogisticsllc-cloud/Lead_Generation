@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Pipeline — GA Leads{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="fw-bold mb-0">Pipeline</h4>
+  <div class="d-flex gap-2">
+    <!-- View toggle -->
+    <a href="/pipeline" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-kanban me-1"></i>Kanban
+    </a>
+    <a href="/leads" class="btn btn-sm btn-dark">
+      <i class="bi bi-table me-1"></i>Table
+    </a>
+    <!-- Status filter -->
+    <div class="btn-group btn-group-sm">
+      {% for s, label in [("active","Active"),("closed","Closed"),("all","All")] %}
+      <a href="?status={{ s }}&priority={{ priority_filter }}"
+         class="btn btn-outline-secondary {% if status_filter == s %}active{% endif %}">
+        {{ label }}
+      </a>
+      {% endfor %}
+    </div>
+    <!-- Priority filter -->
+    <div class="btn-group btn-group-sm">
+      {% for p in ["ALL","HOT","WARM","COLD"] %}
+      <a href="?status={{ status_filter }}&priority={{ p }}"
+         class="btn btn-outline-secondary {% if priority_filter == p %}active{% endif %}">
+        {{ p }}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% if leads %}
+<div class="table-responsive">
+<table class="table table-hover align-middle bg-white rounded shadow-sm overflow-hidden">
+  <thead class="table-dark">
+    <tr>
+      <th>Business</th>
+      <th>Organizer</th>
+      <th>Category</th>
+      <th class="text-center">Score</th>
+      <th class="text-center">Priority</th>
+      <th>Cadence</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for lead in leads %}
+  <tr class="priority-{{ lead.priority }}">
+    <td>
+      <div class="fw-semibold">{{ lead.entity_name }}</div>
+      {% if lead.website %}
+      <a href="{{ lead.website }}" target="_blank" class="text-muted small text-decoration-none">
+        <i class="bi bi-globe2 me-1"></i>{{ lead.website[:35] }}…
+      </a>
+      {% else %}
+      <span class="text-muted small"><i class="bi bi-globe me-1"></i>no website</span>
+      {% endif %}
+    </td>
+    <td>
+      <div>{{ lead.organizer_name or '—' }}</div>
+      {% if lead.filer_phone %}
+      <div class="text-muted small">{{ lead.filer_phone }}</div>
+      {% endif %}
+    </td>
+    <td><span class="badge bg-light text-dark">{{ lead.industry_category or '—' }}</span></td>
+    <td class="text-center fw-bold">{{ lead.fit_score or 0 }}</td>
+    <td class="text-center">
+      <span class="badge badge-{{ lead.priority }} text-white">{{ lead.priority }}</span>
+    </td>
+    <td>
+      {% set cs = lead._cadence %}
+      {% if cs.active %}
+        <div class="cadence-timeline mb-1">
+          {% for t in cs.tasks %}
+          <div class="cadence-dot {{ t.status }}" title="Step {{ t.step }}: {{ t.label }}"></div>
+          {% endfor %}
+        </div>
+        <div class="text-muted small">{{ cs.completed }}/{{ cs.total }} done</div>
+      {% else %}
+        <span class="text-muted small">Not started</span>
+      {% endif %}
+    </td>
+    <td>
+      <span class="badge bg-secondary">{{ lead.outreach_status or 'NEW' }}</span>
+    </td>
+    <td>
+      <a href="/leads/{{ lead.control_number }}" class="btn btn-sm btn-outline-primary">
+        Open →
+      </a>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <div style="font-size:3rem">📭</div>
+  <h5 class="mt-3">No leads found</h5>
+  <p>Run <code>python src/pipeline.py extract</code> to load leads from PDFs.</p>
+</div>
+{% endif %}
+
+{% endblock %}
