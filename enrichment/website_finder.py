@@ -41,8 +41,9 @@ def find_website(
 ) -> str | None:
     """Search Bing for the business's own website.
 
-    Strips common suffixes (LLC, Inc, Corp) before searching.
-    Falls back gracefully if Bing blocks or returns no usable results.
+    Strips common suffixes (LLC, Inc, Corp) before searching.  Scores each
+    candidate URL by how many entity-name tokens appear in its domain — only
+    returns a URL with relevance score >= 1 to avoid false positives.
 
     Args:
         entity_name: Business name (e.g. "Acme Plumbing LLC")
@@ -50,7 +51,8 @@ def find_website(
         browser_page: Optional patchright Page object to reuse. If None,
                       a new browser context is launched (slower but standalone).
 
-    Returns the first non-aggregator HTTP(S) URL, or None.
+    Returns the first non-aggregator URL whose domain contains at least one
+    meaningful token from entity_name, or None.
     """
     clean_name = _clean_entity_name(entity_name)
     location   = f"{city} Georgia" if city else "Georgia"
@@ -63,24 +65,35 @@ def find_website(
     else:
         urls = _bing_search_new_browser(query)
 
-    for url in urls:
-        if _is_business_url(url):
-            logger.info("Found website for %r: %s", entity_name, url)
-            return url
+    result = _best_relevant_url(urls, entity_name)
+    if result:
+        return result
 
-    # Retry without quotes if quoted search found nothing
+    # Retry without quotes if quoted search found nothing usable
     if not urls:
         query2 = f"{clean_name} {location}"
         if browser_page is not None:
             urls2 = _bing_search_with_page(query2, browser_page)
         else:
             urls2 = _bing_search_new_browser(query2)
-        for url in urls2:
-            if _is_business_url(url):
-                logger.info("Found website (unquoted) for %r: %s", entity_name, url)
-                return url
+        result2 = _best_relevant_url(urls2, entity_name)
+        if result2:
+            return result2
 
     logger.info("No website found for %r", entity_name)
+    return None
+
+
+def _best_relevant_url(urls: list[str], entity_name: str) -> str | None:
+    """Return the first URL with domain relevance score >= 1, or None."""
+    for url in urls:
+        if not _is_business_url(url):
+            continue
+        score = _domain_relevance_score(url, entity_name)
+        if score >= 1:
+            logger.info("Found website for %r (score=%d): %s", entity_name, score, url)
+            return url
+        logger.debug("Low-relevance URL for %r (score=0): %s", entity_name, url)
     return None
 
 
@@ -224,3 +237,36 @@ def _clean_entity_name(name: str) -> str:
     suffixes = r"\b(?:LLC|Inc|Corp|Ltd|LP|LLP|PLLC|PC|Co\.?)\b\.?"
     cleaned = re.sub(suffixes, "", name, flags=re.IGNORECASE).strip(" ,.")
     return cleaned
+
+
+def _domain_relevance_score(url: str, entity_name: str) -> int:
+    """Count how many entity-name tokens appear in the URL's second-level domain.
+
+    Words that are too generic to validate against (e.g. "cleaning", "services")
+    are excluded so that e.g. "cleaningpros.com" doesn't match "YOON CLEANING DAY LLC".
+    Returns 1 (benefit of doubt) when no meaningful tokens can be extracted.
+    """
+    GENERIC = {
+        "clean", "cleaning", "service", "services", "repair", "repairs",
+        "care", "group", "build", "building", "construction", "contractor",
+        "contractors", "solutions", "solution", "management", "company",
+        "enterprises", "enterprise", "associates", "professionals",
+        "pros", "plus", "best", "elite", "premier", "quality",
+    }
+    try:
+        netloc = urlparse(url).netloc.lower()
+        sld = re.sub(r"^www\.", "", netloc).split(".")[0]
+    except Exception:
+        return 0
+
+    clean = _clean_entity_name(entity_name).lower()
+    tokens = [t for t in re.split(r"\W+", clean) if len(t) >= 4 and t not in GENERIC]
+    if not tokens:
+        return 1  # name is all generic words — can't validate, give benefit of doubt
+
+    # The longest token is the most distinctive word in the name.
+    # Require it to appear in the domain before counting any matches.
+    primary = max(tokens, key=len)
+    if primary not in sld:
+        return 0
+    return sum(1 for token in tokens if token in sld)

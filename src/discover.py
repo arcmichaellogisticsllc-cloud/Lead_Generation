@@ -82,20 +82,19 @@ def _year_prefix() -> str:
 def discover_new_entities(start_date: date, end_date: date) -> list[dict]:
     """Return new GA 2026 entities filed since the last run (watermark-based).
 
-    Scans businessIds sequentially from the watermark forward, extracting basic
-    entity data from each detail page.  Only entities whose control number starts
-    with the current year prefix are returned.
-
-    Exact date filtering (start_date / end_date) is applied where formation_date
-    is available from the detail page.
+    Scans businessIds sequentially from the watermark forward.  Collects ALL
+    entities whose control number starts with the current year prefix, then
+    applies date filtering to the returned list.  The watermark always advances
+    past every visited businessId so we never re-scan the same range.
 
     Returns list of {control_number, ecorp_control_number, entity_name,
                      entity_type, status, formation_date}.
-    control_number is the eCorp businessId used in detail page URLs.
+    control_number is the eCorp ecorp_control_number (e.g. "26041380").
     """
     from src.db import get_connection, DB_PATH
 
     conn = get_connection(DB_PATH)
+    # existing set uses ecorp_control_number values (e.g. "26041380")
     existing = {
         row[0]
         for row in conn.execute("SELECT control_number FROM leads").fetchall()
@@ -124,10 +123,20 @@ def discover_new_entities(start_date: date, end_date: date) -> list[dict]:
         page = ctx.new_page()
         page.on("dialog", lambda d: d.accept())
 
-        entities, new_watermark = _scan_business_ids(
-            page, watermark, existing, start_date, end_date
-        )
+        # Collect ALL year-prefix entities — date filter applied below
+        all_entities, new_watermark = _scan_business_ids(page, watermark, existing)
         browser.close()
+
+    # Apply date filter to the returned list only (watermark already advanced)
+    entities = [
+        e for e in all_entities
+        if _entity_in_date_range(e, start_date, end_date)
+    ]
+    if len(all_entities) != len(entities):
+        logger.info(
+            "Date filter: %d of %d collected entities are in range %s – %s",
+            len(entities), len(all_entities), start_date, end_date,
+        )
 
     state["last_run"]   = str(date.today())
     state["last_start"] = str(start_date)
@@ -137,8 +146,23 @@ def discover_new_entities(start_date: date, end_date: date) -> list[dict]:
         state["watermark"] = new_watermark
     _save_state(state)
 
-    logger.info("Discovery complete — %d new entities", len(entities))
+    logger.info("Discovery complete — %d new entities in date range", len(entities))
     return entities
+
+
+def _entity_in_date_range(entity: dict, start_date: date, end_date: date) -> bool:
+    """Return True if the entity's formation_date falls within [start_date, end_date].
+
+    Entities with no parseable formation_date are kept (benefit of the doubt).
+    """
+    fd = entity.get("formation_date")
+    if not fd:
+        return True
+    try:
+        fd_date = date.fromisoformat(fd)
+        return start_date <= fd_date <= end_date
+    except ValueError:
+        return True
 
 
 def _max_results() -> int | None:
@@ -156,17 +180,23 @@ def _scan_business_ids(
     page,
     watermark: str,
     existing: set[str],
-    start_date: date,
-    end_date: date,
 ) -> tuple[list[dict], str | None]:
-    """Scan businessIds from watermark+1, return valid new 2026 entities."""
+    """Scan businessIds from watermark+1.
+
+    Collects all entities whose ecorp_control_number starts with the current
+    year prefix.  No date filtering here — caller handles that.  The watermark
+    advances past every successfully loaded page so we never re-scan.
+
+    existing: set of ecorp_control_numbers already in the DB (e.g. {"26041380"}).
+    """
     year_prefix = _year_prefix()
     start_id    = int(watermark) + 1
     end_id      = start_id + MAX_SCAN_PER_RUN
 
-    entities:      list[dict] = []
-    new_watermark: str | None = None
-    consecutive_misses        = 0
+    entities:         list[dict] = []
+    new_watermark:    str | None = None
+    consecutive_misses           = 0
+    non_year_count               = 0
 
     logger.info(
         "Scanning businessIds %d – %d (year_prefix=%s)",
@@ -177,7 +207,6 @@ def _scan_business_ids(
         entity = _load_entity_page(page, biz_id)
 
         if entity is None:
-            # Invalid/non-existent businessId
             consecutive_misses += 1
             if consecutive_misses >= MAX_CONSECUTIVE_MISSES:
                 logger.info(
@@ -193,27 +222,20 @@ def _scan_business_ids(
 
         ctrl = entity.get("ecorp_control_number", "") or ""
         if not ctrl.startswith(year_prefix):
-            logger.debug("businessId %d: ctrl=%s — not a %s entity, skipping", biz_id, ctrl, year_prefix)
+            non_year_count += 1
+            if non_year_count % 100 == 0:
+                logger.info(
+                    "businessId %d: ctrl=%s (non-%s entity; %d seen this run)",
+                    biz_id, ctrl or "none", year_prefix, non_year_count,
+                )
             time.sleep(MIN_DELAY)
             continue
 
-        biz_id_str = str(biz_id)
-        if biz_id_str in existing:
-            logger.debug("businessId %d already in DB", biz_id)
+        # Dedup: compare ecorp_control_number against DB control_number values
+        if ctrl in existing:
+            logger.debug("businessId %d: ctrl=%s already in DB — skipping", biz_id, ctrl)
             time.sleep(MIN_DELAY)
             continue
-
-        # Date filter
-        fd = entity.get("formation_date")
-        if fd:
-            try:
-                fd_date = date.fromisoformat(fd)
-                if not (start_date <= fd_date <= end_date):
-                    logger.debug("businessId %d: formation_date %s outside range", biz_id, fd)
-                    time.sleep(MIN_DELAY)
-                    continue
-            except ValueError:
-                pass  # keep entity if date can't be parsed
 
         entities.append(entity)
         logger.info(
@@ -231,6 +253,10 @@ def _scan_business_ids(
 
         time.sleep(MIN_DELAY)
 
+    logger.info(
+        "Scan finished: %d new %s entities found, %d non-%s entities skipped",
+        len(entities), year_prefix, non_year_count, year_prefix,
+    )
     return entities, new_watermark
 
 
