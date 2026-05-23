@@ -39,8 +39,20 @@ logger = logging.getLogger(__name__)
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def extract_filing_data(pdf_path: Path | str, doc_type: str = "formation") -> dict:
+def extract_filing_data(
+    pdf_path: Path | str,
+    doc_type: str = "formation",
+    transmittal_path: Path | str | None = None,
+) -> dict:
     """Extract contact and entity fields from a GA Articles of Organization PDF.
+
+    Args:
+        pdf_path: Path to the Articles of Organization PDF.
+        doc_type: Document type hint (default "formation").
+        transmittal_path: Optional path to the companion transmittal PDF.  When
+            provided and the file exists, ``extract_transmittal_data()`` is
+            called and its filer_email / filer_phone values are merged into the
+            result, overriding the default None values from the main filing.
 
     Returns:
         {
@@ -49,8 +61,8 @@ def extract_filing_data(pdf_path: Path | str, doc_type: str = "formation") -> di
           registered_agent_name, registered_agent_address, registered_agent_county,
           organizers: [{name, title, address}],
           organizer_name,      # first organizer's name (convenience field)
-          filer_email,         # always None (not in GA PDF)
-          filer_phone,         # always None (not in GA PDF)
+          filer_email,         # from transmittal if available, else None
+          filer_phone,         # from transmittal if available, else None
           authorizer_name, authorizer_title,
           pages_parsed,
         }
@@ -75,8 +87,8 @@ def extract_filing_data(pdf_path: Path | str, doc_type: str = "formation") -> di
         "registered_agent_county":    None,
         "organizers":                 [],
         "organizer_name":             None,
-        "filer_email":                None,  # not available in GA PDF
-        "filer_phone":                None,  # not available in GA PDF
+        "filer_email":                None,  # not available in GA Articles PDF
+        "filer_phone":                None,  # not available in GA Articles PDF
         "authorizer_name":            None,
         "authorizer_title":           None,
         "pages_parsed":               0,
@@ -96,13 +108,134 @@ def extract_filing_data(pdf_path: Path | str, doc_type: str = "formation") -> di
     if result["organizers"]:
         result["organizer_name"] = result["organizers"][0].get("name")
 
+    # Merge transmittal data (filer contact info) if available
+    if transmittal_path is not None:
+        transmittal_path = Path(transmittal_path)
+        if transmittal_path.exists():
+            try:
+                t_data = extract_transmittal_data(transmittal_path)
+                if t_data.get("filer_email"):
+                    result["filer_email"] = t_data["filer_email"]
+                if t_data.get("filer_phone"):
+                    result["filer_phone"] = t_data["filer_phone"]
+                if t_data.get("filer_name") and not result.get("organizer_name"):
+                    result["organizer_name"] = t_data["filer_name"]
+            except Exception as exc:
+                logger.warning("Could not parse transmittal %s: %s", transmittal_path.name, exc)
+
     logger.debug(
-        "Extracted %s: organizer=%s addr=%s",
+        "Extracted %s: organizer=%s addr=%s email=%s phone=%s",
         pdf_path.name,
         result.get("organizer_name"),
         result.get("principal_office_address", "")[:40],
+        result.get("filer_email"),
+        result.get("filer_phone"),
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Transmittal PDF parser
+# ---------------------------------------------------------------------------
+
+def extract_transmittal_data(pdf_path: Path | str) -> dict:
+    """Parse a GA eCorp transmittal PDF for filer contact information.
+
+    The transmittal form is downloaded alongside the Articles of Organization
+    (as ``{control_number}_transmittal.pdf``) and contains the filer's email,
+    phone, and name — fields that are absent from the main filing PDF.
+
+    Returns:
+        {
+          "filer_email": str | None,
+          "filer_phone": str | None,
+          "filer_name":  str | None,
+        }
+    """
+    try:
+        import pdfplumber
+    except ImportError:
+        raise RuntimeError("pdfplumber is required: pip install pdfplumber")
+
+    pdf_path = Path(pdf_path)
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"Transmittal PDF not found: {pdf_path}")
+
+    pages_text: list[str] = []
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        pages_text = [pg.extract_text() or "" for pg in pdf.pages]
+
+    full_text = "\n".join(pages_text)
+
+    filer_email = _extract_transmittal_email(full_text)
+    filer_phone = _extract_transmittal_phone(full_text)
+    filer_name  = _extract_transmittal_name(full_text)
+
+    logger.debug(
+        "Transmittal %s: email=%s phone=%s name=%s",
+        pdf_path.name, filer_email, filer_phone, filer_name,
+    )
+    return {
+        "filer_email": filer_email,
+        "filer_phone": filer_phone,
+        "filer_name":  filer_name,
+    }
+
+
+def _extract_transmittal_email(text: str) -> str | None:
+    """Extract email address from transmittal text."""
+    # Try labelled patterns first
+    for pattern in (
+        r"E-?MAIL\s*:?\s*([\w.+\-]+@[\w\-]+\.\w+)",
+        r"EMAIL\s+([\w.+\-]+@[\w\-]+\.\w+)",
+    ):
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+
+    # Fallback: bare email address anywhere in the text
+    m = re.search(r"[\w.+\-]+@[\w\-]+\.\w+", text)
+    if m:
+        return m.group(0).strip()
+    return None
+
+
+def _extract_transmittal_phone(text: str) -> str | None:
+    """Extract phone number from transmittal text."""
+    # Try labelled patterns first
+    for pattern in (
+        r"DAYTIME\s+(?:PHONE|TEL)\s+(.+?)(?=\n|\Z)",
+        r"TELEPHONE\s+(.+?)(?=\n|\Z)",
+        r"PHONE\s+(.+?)(?=\n|\Z)",
+    ):
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            candidate = m.group(1).strip()
+            # Validate that the extracted text actually looks like a phone number
+            if re.search(r"\d{3}", candidate):
+                return candidate
+
+    # Fallback: 10-digit phone pattern anywhere in the text
+    m = re.search(r"\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}", text)
+    if m:
+        return m.group(0).strip()
+    return None
+
+
+def _extract_transmittal_name(text: str) -> str | None:
+    """Extract filer/preparer name from transmittal text."""
+    for pattern in (
+        r"PREPARER\s+NAME\s+(.+?)(?=\n|\Z)",
+        r"PREPARER\s+(.+?)(?=\n|\Z)",
+        r"CONTACT\s+NAME\s+(.+?)(?=\n|\Z)",
+        r"AUTHORIZED\s+(?:PERSON|SIGNER)\s+(.+?)(?=\n|\Z)",
+    ):
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            candidate = m.group(1).strip()
+            if candidate:
+                return candidate
+    return None
 
 
 # ---------------------------------------------------------------------------

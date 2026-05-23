@@ -21,3 +21,9 @@ priority_tiers:
   hot_threshold: 80
   warm_threshold: 60
   cold_threshold: 40
+
+contactability:
+  has_filer_email: 8
+  has_filer_phone: 8
+  has_organizer_name: 3
+  no_contact_at_all: -25

@@ -115,6 +115,31 @@ def score_lead(
         breakdown["within_14_days"] = 0
         breakdown["within_7_days"] = 0
 
+    # --- Contactability ---
+    contact = weights.get("contactability", {})
+    has_email  = bool(entity_data.get("filer_email"))
+    has_phone  = bool(entity_data.get("filer_phone"))
+    has_org    = bool(entity_data.get("organizer_name"))
+    has_website_contact = bool(
+        entity_data.get("website")
+        or entity_data.get("yelp_url")
+        or entity_data.get("facebook_url")
+        or entity_data.get("google_maps_url")
+    )
+
+    if has_email:
+        breakdown["has_filer_email"] = contact.get("has_filer_email", 0)
+        total += contact.get("has_filer_email", 0)
+    if has_phone:
+        breakdown["has_filer_phone"] = contact.get("has_filer_phone", 0)
+        total += contact.get("has_filer_phone", 0)
+    if has_org:
+        breakdown["has_organizer_name"] = contact.get("has_organizer_name", 0)
+        total += contact.get("has_organizer_name", 0)
+    if not has_email and not has_phone and not has_website_contact:
+        breakdown["no_contact_at_all"] = contact.get("no_contact_at_all", 0)
+        total += contact.get("no_contact_at_all", 0)
+
     # --- Payment stack adjustments ---
     if payment_stack_data:
         detected_processor = payment_stack_data.get("detected_payment_processor")

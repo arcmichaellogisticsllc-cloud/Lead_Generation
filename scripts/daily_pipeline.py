@@ -159,7 +159,11 @@ def main() -> None:
         for pdf_path in sorted(RAW_DIR.glob("*_formation.pdf")):
             cn = pdf_path.stem.split("_")[0]
             try:
-                data = extract_filing_data(pdf_path)
+                transmittal_path = RAW_DIR / f"{cn}_transmittal.pdf"
+                data = extract_filing_data(
+                    pdf_path,
+                    transmittal_path=transmittal_path if transmittal_path.exists() else None,
+                )
                 entity_name = data.get("entity_name") or ""
                 if not entity_name:
                     continue

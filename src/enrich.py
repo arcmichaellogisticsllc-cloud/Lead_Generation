@@ -114,29 +114,96 @@ def enrich_batch(
     conn,
     browser_page=None,
     limit: int | None = None,
+    min_age_days: int = 14,
 ) -> tuple[int, int]:
     """Enrich DB leads that don't yet have website/payment data.
 
     Only processes leads whose ``tier`` is not NULL (i.e. classified and
-    eligible) and whose ``has_website`` column is still NULL.
+    eligible) and whose ``has_website`` column is still NULL, OR leads that
+    previously had no website but haven't been profile-searched yet and are
+    now at least ``min_age_days`` old.
+
+    Brand-new entities (formed within the last ``min_age_days`` days) with no
+    website data yet are skipped for expensive enrichment.  They are instead
+    scored on filing data only and marked ``has_website=0`` as a provisional
+    assumption.  The pipeline will re-enrich them once they age past the
+    threshold.
+
+    Args:
+        conn: Open SQLite connection.
+        browser_page: Reusable patchright Page.  None = launch per call.
+        limit: Cap on how many leads to process this run.
+        min_age_days: Minimum age (days since formation_date) before a
+            has_website=0 / profiles_searched=0 lead is re-enriched.
+            Also used as the freshness threshold for skipping new entities.
+            Default 14.
 
     Returns (enriched_count, error_count).
     """
     sql = """
         SELECT * FROM leads
-        WHERE has_website IS NULL
+        WHERE (
+            has_website IS NULL
+            OR (
+                has_website = 0
+                AND profiles_searched = 0
+                AND julianday('now') - julianday(formation_date) >= ?
+            )
+        )
           AND tier IS NOT NULL
         ORDER BY first_seen DESC
     """
+    params: list = [min_age_days]
     if limit:
         sql += f" LIMIT {limit}"
 
-    rows = conn.execute(sql).fetchall()
+    rows = conn.execute(sql, params).fetchall()
     logger.info("Enrichment batch: %d lead(s) to process", len(rows))
 
     enriched = errors = 0
     for row in rows:
         lead = dict(row)
+
+        # --- Skip enrichment for brand-new entities ---
+        formation_date_str = lead.get("formation_date")
+        if formation_date_str and lead.get("has_website") is None:
+            try:
+                from datetime import date as _date
+                fd = _date.fromisoformat(str(formation_date_str))
+                age_days = (_date.today() - fd).days
+                if age_days < min_age_days:
+                    logger.info(
+                        "Skipping enrichment for fresh entity — scoring on filing data only: %s (age=%d days)",
+                        lead.get("entity_name", lead.get("control_number")),
+                        age_days,
+                    )
+                    # Score on filing data only
+                    classification = {
+                        "tier":              lead.get("tier"),
+                        "match_source":      lead.get("match_source") or "",
+                        "industry_category": lead.get("industry_category"),
+                    }
+                    scored = score_lead(lead, classification, payment_data=None)
+                    with conn:
+                        conn.execute(
+                            """
+                            UPDATE leads SET
+                                has_website=0,
+                                fit_score=?, score_breakdown=?, priority=?,
+                                last_updated=CURRENT_TIMESTAMP
+                            WHERE control_number=?
+                            """,
+                            (
+                                scored.get("fit_score"),
+                                json.dumps(scored.get("score_breakdown")),
+                                scored.get("priority"),
+                                lead["control_number"],
+                            ),
+                        )
+                    continue
+            except (ValueError, TypeError):
+                pass  # malformed date — fall through to normal enrichment
+
         try:
             updated = enrich_lead(lead, browser_page=browser_page)
             with conn:
