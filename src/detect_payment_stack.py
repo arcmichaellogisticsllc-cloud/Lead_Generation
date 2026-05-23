@@ -26,7 +26,9 @@ import yaml
 logger = logging.getLogger(__name__)
 
 _CONFIG_DIR = Path(__file__).parent.parent / "config"
-_FINGERPRINTS: dict | None = None
+_FINGERPRINTS: dict = yaml.safe_load(
+    (_CONFIG_DIR / "payment_stack_fingerprints.yaml").read_text()
+)
 
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -150,37 +152,42 @@ def _fetch_pages(base_url: str) -> list[str]:
             "Accept": "text/html,application/xhtml+xml,*/*",
             "Accept-Language": "en-US,en;q=0.9",
         },
-        verify=False,  # tolerate self-signed/expired certs on small-biz sites
+        verify=True,
     ) as client:
         for path in paths:
             url = base_url + path
             try:
                 resp = client.get(url)
-                ct = resp.headers.get("content-type", "")
-                if resp.status_code == 200 and "text/html" in ct:
-                    pages.append(resp.text)
-                    logger.debug("Fetched %s (%d chars)", url, len(resp.text))
-                else:
-                    logger.debug("Skipping %s (status=%d)", url, resp.status_code)
+            except httpx.SSLError:
+                logger.debug("TLS error for %s — retrying without verification", url)
+                try:
+                    resp = httpx.get(
+                        url, timeout=10, follow_redirects=True,
+                        headers={"User-Agent": UA}, verify=False,
+                    )
+                except Exception as exc:
+                    if path == "":
+                        logger.info("Homepage unreachable %s: %s", url, exc)
+                        return []
+                    logger.debug("Sub-path %s: %s", url, exc)
+                    continue
             except Exception as exc:
                 if path == "":
                     logger.info("Homepage unreachable %s: %s", url, exc)
                     return []
                 logger.debug("Sub-path %s: %s", url, exc)
+                continue
+            ct = resp.headers.get("content-type", "")
+            if resp.status_code == 200 and "text/html" in ct:
+                pages.append(resp.text)
+                logger.debug("Fetched %s (%d chars)", url, len(resp.text))
+            else:
+                logger.debug("Skipping %s (status=%d)", url, resp.status_code)
 
     return pages
 
 
-# ---------------------------------------------------------------------------
-# Config loader (lazy, cached)
-# ---------------------------------------------------------------------------
-
 def _load_config() -> dict:
-    global _FINGERPRINTS
-    if _FINGERPRINTS is None:
-        _FINGERPRINTS = yaml.safe_load(
-            (_CONFIG_DIR / "payment_stack_fingerprints.yaml").read_text()
-        )
     return _FINGERPRINTS
 
 

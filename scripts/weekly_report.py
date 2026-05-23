@@ -83,22 +83,25 @@ def _build_report(rows, days: int, cutoff: date) -> str:
 
     # ---------- Top leads ----------
     top = [r for r in rows if (r["priority"] or "SKIP") not in ("SKIP",)][:20]
+    def _md_cell(s: str) -> str:
+        return (s or "").replace("|", "\\|").replace("\n", " ").replace("\r", "")
+
     if top:
         lines.append("## Top Leads (non-SKIP)")
         lines.append("")
         lines.append("| Score | Priority | Entity | Category | Website | Processor |")
         lines.append("|------:|----------|--------|----------|---------|-----------|")
         for row in top:
-            name      = (row["entity_name"] or "")[:45]
-            cat       = (row["industry_category"] or "—")[:20]
-            website   = row["website"] or "—"
-            processor = row["detected_payment_processor"] or "—"
+            name      = _md_cell((row["entity_name"] or "")[:45])
+            cat       = _md_cell((row["industry_category"] or "—")[:20])
+            website   = _md_cell((row["website"] or "—")[:40])
+            processor = _md_cell(row["detected_payment_processor"] or "—")
             lines.append(
                 f"| {row['fit_score'] or 0:>3} "
                 f"| {row['priority'] or '?'} "
                 f"| {name} "
                 f"| {cat} "
-                f"| {website[:40]} "
+                f"| {website} "
                 f"| {processor} |"
             )
         lines.append("")

@@ -129,10 +129,11 @@ def _bing_search_new_browser(query: str) -> list[str]:
     encoded = quote_plus(query)
     url = f"https://www.bing.com/search?q={encoded}&form=QBLH"
 
+    _headless = __import__("os").environ.get("BROWSER_HEADLESS", "0") != "0"
     with sync_playwright() as pw:
         browser = pw.chromium.launch(
-            headless=False,
-            args=["--window-position=3000,3000"],
+            headless=_headless,
+            args=([] if _headless else ["--window-position=3000,3000"]),
         )
         ctx  = browser.new_context(
             user_agent=(

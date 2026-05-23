@@ -185,7 +185,7 @@ document.querySelectorAll('.complete-btn').forEach(btn => {
     div.innerHTML = opts.map(o =>
       `<div class="form-check">
         <input class="form-check-input" type="radio" name="outcome" value="${o}" id="o-${o}" ${o===opts[0]?'checked':''}>
-        <label class="form-check-label" for="o-${o}">${o.replace('_',' ')}</label>
+        <label class="form-check-label" for="o-${o}">${o.replace(/_/g,' ')}</label>
        </div>`
     ).join('');
     new bootstrap.Modal(document.getElementById('completeModal')).show();

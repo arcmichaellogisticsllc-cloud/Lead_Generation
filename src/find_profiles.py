@@ -120,8 +120,12 @@ def _bing_search_new_browser(search_url: str) -> list[str]:
         from patchright.sync_api import sync_playwright
     except ImportError:
         return []
+    _headless = __import__("os").environ.get("BROWSER_HEADLESS", "0") != "0"
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=False, args=["--window-position=3000,3000"])
+        browser = pw.chromium.launch(
+            headless=_headless,
+            args=([] if _headless else ["--window-position=3000,3000"]),
+        )
         ctx  = browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "

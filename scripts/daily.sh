@@ -8,4 +8,4 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 cd "$PROJECT_DIR"
 source .venv/bin/activate
-python -m src.pipeline run-all --days 1
+python scripts/daily_pipeline.py

@@ -152,8 +152,6 @@ def enrich_batch(
                         profiles_searched=?,
                         review_snippet=?, review_source=?,
                         review_has_payment_friction=?,
-                        review_snippet=?, review_source=?,
-                        review_has_payment_friction=?,
                         fit_score=?, score_breakdown=?, priority=?,
                         last_updated=CURRENT_TIMESTAMP
                     WHERE control_number=?
@@ -180,7 +178,7 @@ def enrich_batch(
                         updated.get("fit_score"),
                         updated.get("score_breakdown"),
                         updated.get("priority"),
-                        lead["control_number"],
+                        lead["control_number"],  # WHERE
                     ),
                 )
             enriched += 1

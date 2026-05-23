@@ -207,7 +207,7 @@
                   </a>
                   {% endif %}
                   <button class="btn btn-sm btn-outline-secondary copy-btn"
-                          data-text="{{ tmpl.body|replace('"', '&quot;') }}">
+                          data-text="{{ tmpl.body | tojson }}">
                     <i class="bi bi-clipboard"></i> Copy
                   </button>
                   <a href="/templates#step-{{ step }}" class="btn btn-sm btn-link text-muted p-0 align-self-center">
@@ -356,7 +356,7 @@ document.querySelectorAll('.complete-btn').forEach(btn => {
 
 document.querySelectorAll('.copy-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    const text = btn.dataset.text.replace(/&quot;/g, '"');
+    const text = JSON.parse(btn.dataset.text);
     navigator.clipboard.writeText(text).then(() => {
       btn.textContent = '✓ Copied';
       setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy'; }, 1500);

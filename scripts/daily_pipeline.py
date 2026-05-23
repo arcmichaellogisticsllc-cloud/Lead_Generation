@@ -127,9 +127,11 @@ def main() -> None:
             logger.info("Phase 2: Download %d PDFs", len(to_download))
             from patchright.sync_api import sync_playwright
             from src.discover import BASE_URL, USER_AGENT
+            _headless = os.environ.get("BROWSER_HEADLESS", "0") != "0"
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(
-                    headless=False, args=["--window-position=3000,3000"]
+                    headless=_headless,
+                    args=([] if _headless else ["--window-position=3000,3000"]),
                 )
                 ctx  = browser.new_context(user_agent=USER_AGENT,
                                            viewport={"width": 1280, "height": 900})
@@ -205,7 +207,8 @@ def main() -> None:
             from src.discover import USER_AGENT
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(
-                    headless=False, args=["--window-position=3000,3000"]
+                    headless=_headless,
+                    args=([] if _headless else ["--window-position=3000,3000"]),
                 )
                 ctx  = browser.new_context(user_agent=USER_AGENT,
                                            viewport={"width": 1280, "height": 800})
@@ -287,10 +290,9 @@ def main() -> None:
                  run_log["pdfs_downloaded"],     run_log["enrichment_completed"],
                  json.dumps(run_log["errors"])),
             )
-        conn.close()
-
         # ── Notifications ───────────────────────────────────────────────
         _write_notifications(conn, run_log, today_str)
+        conn.close()
 
         _notify(run_log)
 
@@ -352,8 +354,11 @@ def _notify_error(err: str) -> None:
 
 def _mac_notify(title: str, message: str) -> None:
     try:
+        # Sanitize to prevent AppleScript injection via entity names in title/message
+        safe_title   = title.replace('"', "'").replace("\\", "")
+        safe_message = message.replace('"', "'").replace("\\", "")
         script = (
-            f'display notification "{message}" with title "{title}" '
+            f'display notification "{safe_message}" with title "{safe_title}" '
             f'sound name "default"'
         )
         subprocess.run(["osascript", "-e", script], check=False, timeout=5)
@@ -362,15 +367,26 @@ def _mac_notify(title: str, message: str) -> None:
 
 
 def _acquire_lock() -> bool:
+    # Expire stale locks older than 3 hours
     if LOCK_PATH.exists():
-        # Stale lock (> 3 h old)?
-        age = time.time() - LOCK_PATH.stat().st_mtime
-        if age > 10_800:
-            LOCK_PATH.unlink()
-        else:
+        try:
+            age = time.time() - LOCK_PATH.stat().st_mtime
+            if age > 10_800:
+                LOCK_PATH.unlink()
+        except OSError:
+            pass
+
+    # Atomic create — fails if another process beat us to it
+    import errno
+    try:
+        fd = os.open(str(LOCK_PATH), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+        return True
+    except OSError as e:
+        if e.errno == errno.EEXIST:
             return False
-    LOCK_PATH.write_text(str(os.getpid()))
-    return True
+        raise
 
 
 def _release_lock() -> None:

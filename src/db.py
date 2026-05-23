@@ -16,24 +16,6 @@ def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
 
 def init_db(db_path: Path = DB_PATH) -> None:
     conn = get_connection(db_path)
-    # Add cadence columns if they don't exist yet (idempotent ALTER TABLE)
-    for col, definition in [
-        ("cadence_start_date", "DATE"),
-        ("cadence_step",       "INTEGER DEFAULT 0"),
-        ("instagram_url",      "TEXT"),
-        ("yelp_url",           "TEXT"),
-        ("angi_url",           "TEXT"),
-        ("google_maps_url",    "TEXT"),
-        ("profiles_searched",  "BOOLEAN DEFAULT 0"),
-        ("review_snippet",     "TEXT"),
-        ("review_source",      "TEXT"),
-        ("review_has_payment_friction", "BOOLEAN DEFAULT 0"),
-    ]:
-        try:
-            conn.execute(f"ALTER TABLE leads ADD COLUMN {col} {definition}")
-            conn.commit()
-        except Exception:
-            pass  # column already exists
 
     with conn:
         conn.executescript("""
@@ -158,10 +140,54 @@ def init_db(db_path: Path = DB_PATH) -> None:
 
             CREATE INDEX IF NOT EXISTS idx_notif_read ON notifications(read, created_at DESC);
         """)
+
+    # Idempotent column additions (v2+ migrations) — run after CREATE TABLE
+    _V2_COLUMNS = [
+        ("cadence_start_date",          "DATE"),
+        ("cadence_step",                "INTEGER DEFAULT 0"),
+        ("instagram_url",               "TEXT"),
+        ("yelp_url",                    "TEXT"),
+        ("angi_url",                    "TEXT"),
+        ("google_maps_url",             "TEXT"),
+        ("profiles_searched",           "BOOLEAN DEFAULT 0"),
+        ("review_snippet",              "TEXT"),
+        ("review_source",               "TEXT"),
+        ("review_has_payment_friction", "BOOLEAN DEFAULT 0"),
+    ]
+    for col, definition in _V2_COLUMNS:
+        try:
+            conn.execute(f"ALTER TABLE leads ADD COLUMN {col} {definition}")
+        except Exception:
+            pass  # column already exists
+    conn.commit()
     conn.close()
 
 
+_LEAD_FIELDS = {
+    "control_number", "entity_name", "entity_type", "status", "formation_date",
+    "naics_code", "tier", "industry_category",
+    "registered_agent_name", "registered_agent_address", "registered_agent_email",
+    "registered_agent_is_service",
+    "organizer_name", "organizer_address", "organizer_capacity",
+    "filer_email", "filer_phone",
+    "principal_office_address", "business_email",
+    "website", "business_phone", "owner_personal_phone", "owner_email",
+    "google_place_id", "facebook_url", "instagram_url", "linkedin_url",
+    "yelp_url", "angi_url", "google_maps_url",
+    "ga_license_number",
+    "has_website", "has_online_booking", "has_online_payment",
+    "detected_payment_processor", "detected_vertical_saas", "invoice_workflow_signals",
+    "fit_score", "score_breakdown", "priority",
+    "outreach_status", "notes",
+    "cadence_start_date", "cadence_step",
+    "profiles_searched", "review_snippet", "review_source", "review_has_payment_friction",
+}
+
+
 def upsert_lead(conn: sqlite3.Connection, lead: dict) -> None:
+    unknown = set(lead.keys()) - _LEAD_FIELDS
+    if unknown:
+        raise ValueError(f"upsert_lead: unknown field(s): {unknown}")
     fields = list(lead.keys())
     placeholders = ", ".join(["?" for _ in fields])
     updates = ", ".join([f"{f} = excluded.{f}" for f in fields if f != "control_number"])
@@ -182,6 +208,8 @@ def get_lead(conn: sqlite3.Connection, control_number: str) -> sqlite3.Row | Non
 
 
 def leads_missing_field(conn: sqlite3.Connection, field: str) -> list[sqlite3.Row]:
+    if field not in _LEAD_FIELDS:
+        raise ValueError(f"leads_missing_field: unknown field: {field!r}")
     return conn.execute(
         f"SELECT * FROM leads WHERE {field} IS NULL ORDER BY first_seen DESC"
     ).fetchall()

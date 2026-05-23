@@ -10,12 +10,9 @@ import yaml
 
 _CONFIG_DIR = Path(__file__).parent.parent / "config"
 
+_WEIGHTS: dict = yaml.safe_load((_CONFIG_DIR / "scoring_weights.yaml").read_text())
 
-def _load_weights() -> dict:
-    return yaml.safe_load((_CONFIG_DIR / "scoring_weights.yaml").read_text())
-
-
-def _load_payment_weights() -> dict:
+def _build_payment_weights() -> dict:
     cfg = yaml.safe_load((_CONFIG_DIR / "payment_stack_fingerprints.yaml").read_text())
     weights = {}
     for category in ("payment_processors", "vertical_saas"):
@@ -24,6 +21,16 @@ def _load_payment_weights() -> dict:
     for name, data in cfg.get("opportunity_signals", {}).items():
         weights[name] = data["weight"]
     return weights
+
+_PAYMENT_WEIGHTS: dict = _build_payment_weights()
+
+
+def _load_weights() -> dict:
+    return _WEIGHTS
+
+
+def _load_payment_weights() -> dict:
+    return _PAYMENT_WEIGHTS
 
 
 def score_lead(

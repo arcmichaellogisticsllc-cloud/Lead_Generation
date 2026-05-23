@@ -109,10 +109,11 @@ def discover_new_entities(start_date: date, end_date: date) -> list[dict]:
         logger.info("No watermark found — starting from businessId %s", watermark)
 
     from patchright.sync_api import sync_playwright
+    _headless = __import__("os").environ.get("BROWSER_HEADLESS", "0") != "0"
     with sync_playwright() as pw:
         browser = pw.chromium.launch(
-            headless=False,
-            args=["--window-position=3000,3000"],
+            headless=_headless,
+            args=([] if _headless else ["--window-position=3000,3000"]),
         )
         ctx = browser.new_context(
             user_agent=USER_AGENT,
@@ -153,16 +154,22 @@ def discover_new_entities(start_date: date, end_date: date) -> list[dict]:
 def _entity_in_date_range(entity: dict, start_date: date, end_date: date) -> bool:
     """Return True if the entity's formation_date falls within [start_date, end_date].
 
-    Entities with no parseable formation_date are kept (benefit of the doubt).
+    Entities with no formation_date are excluded — an empty date is not a
+    signal to include; it means we couldn't determine when the entity was formed.
+    Entities with an unparseable date string are also excluded and logged.
     """
     fd = entity.get("formation_date")
     if not fd:
-        return True
+        return False
     try:
         fd_date = date.fromisoformat(fd)
         return start_date <= fd_date <= end_date
     except ValueError:
-        return True
+        logger.warning(
+            "Could not parse formation_date %r for %r — excluding",
+            fd, entity.get("entity_name", entity.get("control_number")),
+        )
+        return False
 
 
 def _max_results() -> int | None:
@@ -244,7 +251,8 @@ def _scan_business_ids(
             entity.get("entity_name", "")[:40],
         )
 
-        _screenshot(page, f"entity_{biz_id}")
+        if __import__("os").environ.get("DISCOVER_SCREENSHOTS") == "1":
+            _screenshot(page, f"entity_{biz_id}")
 
         cap = _max_results()
         if cap is not None and len(entities) >= cap:
@@ -306,12 +314,12 @@ def _load_entity_page(page, biz_id: int) -> dict | None:
     ))
 
     return {
-        "control_number":      str(biz_id),
-        "ecorp_control_number": ctrl_num,
-        "entity_name":         entity_name,
-        "entity_type":         entity_type,
-        "status":              status,
-        "formation_date":      _parse_date(formation_dt),
+        "control_number": ctrl_num,   # eCorp 8-digit number (e.g. "26041380")
+        "biz_id":         str(biz_id),  # internal sequential ID used only for navigation
+        "entity_name":    entity_name,
+        "entity_type":    entity_type,
+        "status":         status,
+        "formation_date": _parse_date(formation_dt),
     }
 
 
@@ -320,8 +328,16 @@ def _load_entity_page(page, biz_id: int) -> dict | None:
 # ---------------------------------------------------------------------------
 
 def _extract_ctrl_num(soup) -> str | None:
-    """Find an 8-digit GA control number in the page."""
+    """Find an 8-digit GA control number in the page.
+
+    Looks for the labelled field first (e.g. "Control Number: 26041380") to
+    avoid false-positive matches on phone numbers, ZIP+4 codes, or dates.
+    """
     text = soup.get_text(" ")
+    m = re.search(r'Control\s+(?:Number|No\.?)[:\s]+(\d{8})', text, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    # Fallback: any 8-digit token — accepted only when no labelled match exists
     m = re.search(r'\b(\d{8})\b', text)
     return m.group(1) if m else None
 

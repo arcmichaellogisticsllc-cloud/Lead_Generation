@@ -6,7 +6,9 @@ Open: http://localhost:5000
 from __future__ import annotations
 
 import json
+import os
 import re
+import secrets
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -15,12 +17,10 @@ from flask import Flask, jsonify, redirect, render_template, request, url_for
 
 sys.path.insert(0, str(Path(__file__).parent))
 from src.db import DB_PATH, get_connection, init_db
+from src.notifications import get_unread, mark_all_read, unread_count
 
 app = Flask(__name__)
-
-import sys as _sys
-_sys.path.insert(0, str(Path(__file__).parent))
-from src.notifications import get_unread, mark_all_read, unread_count
+app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
 
 
 @app.context_processor
@@ -209,21 +209,33 @@ def _review_hook(lead: dict) -> str:
     return "\n\nI came across your business online — looks like you're building a reputation in the area."
 
 
+def _sanitize_template_value(v: str) -> str:
+    """Strip control characters that could inject headers into mailto: body."""
+    return v.replace("\r", "").replace("\n", " ").replace("\0", "")
+
+
 def _render_template_body(body: str, lead: dict, log_history: list[dict] | None = None) -> str:
     ikey          = _industry_key(lead.get("industry_category") or "")
-    first_name    = (lead.get("organizer_name") or "there").split()[0].title()
-    business_type = (lead.get("industry_category") or "home service").lower()
-    city          = _city_from_address(lead.get("principal_office_address") or "")
-    nearby        = _nearby_city(city)
+    first_name    = _sanitize_template_value(
+        (lead.get("organizer_name") or "there").split()[0].title()
+    )
+    business_type = _sanitize_template_value(
+        (lead.get("industry_category") or "home service").lower()
+    )
+    city          = _sanitize_template_value(
+        _city_from_address(lead.get("principal_office_address") or "")
+    )
+    nearby        = _sanitize_template_value(_nearby_city(city))
     stat          = PROOF_POINTS.get(ikey) or PROOF_POINTS["default"]
     pain_point    = INDUSTRY_PAIN_POINTS.get(ikey) or INDUSTRY_PAIN_POINTS["default"]
     outcome_ctx   = _outcome_context(log_history or [])
     review_hook   = _review_hook(lead)
+    entity_name   = _sanitize_template_value(lead.get("entity_name") or "")
 
     return (
         body
         .replace("{{first_name}}",      first_name)
-        .replace("{{business_name}}",   lead.get("entity_name") or "")
+        .replace("{{business_name}}",   entity_name)
         .replace("{{business_type}}",   business_type)
         .replace("{{city}}",            city or "your area")
         .replace("{{nearby_city}}",     nearby)
@@ -360,27 +372,58 @@ def dashboard():
 # Routes — Leads
 # ---------------------------------------------------------------------------
 
+_VALID_PRIORITIES = {"ALL", "HOT", "WARM", "COLD", "SKIP"}
+_VALID_STATUSES   = {"active", "closed", "all"}
+
+
 @app.route("/leads")
 def leads():
     conn  = db()
     status_filter   = request.args.get("status", "active")
     priority_filter = request.args.get("priority", "ALL")
 
+    if priority_filter not in _VALID_PRIORITIES:
+        priority_filter = "ALL"
+    if status_filter not in _VALID_STATUSES:
+        status_filter = "active"
+
+    params: list = []
     sql = "SELECT * FROM leads WHERE priority != 'SKIP'"
     if priority_filter != "ALL":
-        sql += f" AND priority = '{priority_filter}'"
+        sql += " AND priority = ?"
+        params.append(priority_filter)
     if status_filter == "active":
         sql += " AND outreach_status NOT IN ('CONVERTED','DEAD')"
     elif status_filter == "closed":
         sql += " AND outreach_status IN ('CONVERTED','DEAD','NURTURE')"
     sql += " ORDER BY fit_score DESC"
 
-    rows = [dict(r) for r in conn.execute(sql).fetchall()]
+    rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
 
-    # Attach cadence progress to each lead
-    for lead in rows:
-        cs = _cadence_status(conn, lead["control_number"])
-        lead["_cadence"] = cs
+    # Batch-load all cadence tasks to avoid N+1 queries
+    if rows:
+        cns = [r["control_number"] for r in rows]
+        placeholders = ",".join("?" * len(cns))
+        all_tasks = conn.execute(
+            f"SELECT * FROM cadence_tasks WHERE control_number IN ({placeholders}) ORDER BY step",
+            cns,
+        ).fetchall()
+        from collections import defaultdict
+        tasks_by_cn: dict = defaultdict(list)
+        for t in all_tasks:
+            tasks_by_cn[t["control_number"]].append(dict(t))
+
+        for lead in rows:
+            tasks = tasks_by_cn.get(lead["control_number"], [])
+            completed = sum(1 for t in tasks if t["status"] == "done")
+            next_task = next((t for t in tasks if t["status"] == "pending"), None)
+            lead["_cadence"] = {
+                "active":    bool(tasks),
+                "tasks":     tasks,
+                "next_task": next_task,
+                "completed": completed,
+                "total":     len(tasks),
+            }
 
     conn.close()
     return render_template(
@@ -475,7 +518,10 @@ def start_cadence(cn: str):
 
 @app.route("/leads/<cn>/complete_task", methods=["POST"])
 def complete_task(cn: str):
-    task_id = request.form.get("task_id")
+    raw_task_id = request.form.get("task_id", "").strip()
+    if not raw_task_id.isdigit():
+        return "Invalid task_id", 400
+    task_id = int(raw_task_id)
     outcome = request.form.get("outcome", "")
     notes   = request.form.get("notes", "")
 
@@ -563,11 +609,19 @@ def email_templates():
     )
 
 
+_VALID_TEMPLATE_STEPS = {2, 3, 8, 10, 12}
+
+
 @app.route("/templates/save", methods=["POST"])
 def save_template():
-    step    = int(request.form["step"])
+    try:
+        step = int(request.form["step"])
+    except (KeyError, ValueError):
+        return "Invalid step", 400
+    if step not in _VALID_TEMPLATE_STEPS:
+        return "Invalid step", 400
     subject = request.form.get("subject", "")
-    body    = request.form["body"]
+    body    = request.form.get("body", "")
 
     conn = db()
     conn.execute(
@@ -600,8 +654,12 @@ def enrich_lead_route(cn: str):
         return redirect(url_for("leads"))
 
     lead = dict(row)
+    _headless = os.environ.get("BROWSER_HEADLESS", "0") != "0"
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=False, args=["--window-position=3000,3000"])
+        browser = pw.chromium.launch(
+            headless=_headless,
+            args=([] if _headless else ["--window-position=3000,3000"]),
+        )
         ctx  = browser.new_context(user_agent=USER_AGENT, viewport={"width": 1280, "height": 800})
         page = ctx.new_page()
         try:
@@ -680,7 +738,9 @@ def _cadence_stage(next_step: int | None, outreach_status: str | None) -> str:
         return "day6"
     if next_step <= 10:
         return "day9"
-    return "day12"
+    if next_step <= 12:
+        return "day12"
+    return "closed"
 
 
 @app.route("/pipeline")
@@ -744,7 +804,11 @@ def pipeline_kanban():
 @app.route("/notifications/read", methods=["POST"])
 def notifications_read():
     mark_all_read()
-    return redirect(request.referrer or "/")
+    from urllib.parse import urlparse
+    ref = request.referrer or "/"
+    if urlparse(ref).netloc not in ("", request.host):
+        ref = "/"
+    return redirect(ref)
 
 
 # ---------------------------------------------------------------------------
@@ -783,4 +847,4 @@ if __name__ == "__main__":
     conn.close()
     print("\n  GA Payment Leads — Sales Pipeline")
     print("  Open: http://localhost:5000\n")
-    app.run(debug=True, port=5000)
+    app.run(debug=os.environ.get("FLASK_DEBUG", "0") == "1", port=5000)

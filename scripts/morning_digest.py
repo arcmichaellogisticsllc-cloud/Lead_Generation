@@ -113,8 +113,11 @@ def main() -> None:
 
 def _mac_notify(title: str, message: str) -> None:
     try:
+        # Sanitize to prevent AppleScript injection via entity names in title/message
+        safe_title   = title.replace('"', "'").replace("\\", "")
+        safe_message = message.replace('"', "'").replace("\\", "")
         script = (
-            f'display notification "{message}" with title "{title}" '
+            f'display notification "{safe_message}" with title "{safe_title}" '
             f'sound name "default"'
         )
         subprocess.run(["osascript", "-e", script], check=False, timeout=5)
