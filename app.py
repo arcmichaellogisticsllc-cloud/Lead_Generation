@@ -109,9 +109,15 @@ Reach out whenever it's the right time.
         "subject": "",
         "body": """"Hey {{first_name}}, Marcus McGee here from IPPayware — quick question for you, I'll make it worth a 30-second callback. {{sender_email}}. Again, {{sender_email}}." """,
     },
+    5: {
+        "name": "Day 3 — Text",
+        "subject": "",
+        "body": """Hey {{first_name}} — Marcus from IPPayware. {{pain_point}}? Worth a quick chat — reply or call me back. — Marcus""",
+    },
 }
 
 SENDER_EMAIL = "mmcgee@ippayware.com"
+SENDER_PHONE = os.environ.get("SENDER_PHONE", "")
 
 # Industry-matched proof points — keyed by normalized industry slug
 PROOF_POINTS: dict[str, str] = {
@@ -244,6 +250,7 @@ def _render_template_body(body: str, lead: dict, log_history: list[dict] | None 
         .replace("{{outcome_context}}", outcome_ctx)
         .replace("{{review_hook}}",     review_hook)
         .replace("{{sender_email}}",    SENDER_EMAIL)
+        .replace("{{sender_phone}}",    SENDER_PHONE)
     )
 
 
@@ -255,6 +262,23 @@ def _make_mailto(to_email: str, subject: str, body: str) -> str:
         f"mailto:{to_email}"
         f"?subject={quote(subject, safe='')}"
         f"&body={quote(body, safe='')}"
+    )
+
+
+def _make_sms(to_phone: str, body: str) -> str:
+    from urllib.parse import quote
+    if not to_phone:
+        return ""
+    return f"sms:{to_phone}?body={quote(body, safe='')}"
+
+
+def _best_phone(lead: dict) -> str | None:
+    """Return the best available outreach phone, preferring filing data over scraped."""
+    return (
+        lead.get("filer_phone")
+        or lead.get("business_phone")
+        or lead.get("owner_personal_phone")
+        or None
     )
 
 
@@ -299,7 +323,8 @@ def _today_tasks(conn) -> list[dict]:
     today = str(date.today())
     rows = conn.execute(
         """
-        SELECT ct.*, l.entity_name, l.organizer_name, l.filer_phone,
+        SELECT ct.*, l.entity_name, l.organizer_name,
+               l.filer_phone, l.business_phone, l.filer_email,
                l.principal_office_address, l.industry_category, l.priority
         FROM cadence_tasks ct
         JOIN leads l ON ct.control_number = l.control_number
@@ -455,15 +480,21 @@ def lead_detail(cn: str):
     log_list  = [dict(r) for r in log]
     templates = _get_templates(conn)
 
-    # Build rendered email drafts — pass log history for adaptive copy
+    # Build rendered drafts — pass log history for adaptive copy
+    best_ph = _best_phone(lead)
+    best_email = lead.get("filer_email") or lead.get("business_email") or ""
     rendered = {}
     for step, tmpl in templates.items():
         subj = _render_template_body(tmpl["subject"], lead, log_list)
         body = _render_template_body(tmpl["body"],    lead, log_list)
+        ttype = "vm" if step == 2 else "sms" if step == 5 else "email"
         rendered[step] = {
             "subject":  subj,
             "body":     body,
-            "mailto":   _make_mailto(lead.get("filer_email") or "", subj, body),
+            "type":     ttype,
+            "mailto":   _make_mailto(best_email, subj, body) if ttype == "email" else "",
+            "sms":      _make_sms(best_ph or "", body)       if ttype in ("sms", "vm") else "",
+            "tel":      f"tel:{best_ph}" if best_ph else "",
         }
 
     conn.close()
@@ -477,6 +508,8 @@ def lead_detail(cn: str):
         email_outcomes=EMAIL_OUTCOMES,
         final_outcomes=FINAL_OUTCOMES,
         rendered=rendered,
+        best_phone=best_ph,
+        best_email=best_email,
         sender_email=SENDER_EMAIL,
         today=str(date.today()),
     )
@@ -610,7 +643,7 @@ def email_templates():
     )
 
 
-_VALID_TEMPLATE_STEPS = {2, 3, 8, 10, 12}
+_VALID_TEMPLATE_STEPS = {2, 3, 5, 8, 10, 12}
 
 
 @app.route("/templates/save", methods=["POST"])

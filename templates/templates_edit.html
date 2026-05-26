@@ -4,7 +4,7 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
-    <h4 class="fw-bold mb-0">Email Templates</h4>
+    <h4 class="fw-bold mb-0">Outreach Templates</h4>
     <p class="text-muted small mb-0">
       <strong>Variables:</strong>
       <code>{{first_name}}</code>
@@ -12,14 +12,16 @@
       <code>{{business_type}}</code>
       <code>{{city}}</code>
       <code>{{nearby_city}}</code>
-      <code>{{stat}}</code> — industry-matched proof point<br>
-      <code>{{pain_point}}</code> — industry-specific opening question
+      <code>{{stat}}</code> — industry proof point<br>
+      <code>{{pain_point}}</code> — industry opening question
       &nbsp;·&nbsp;
-      <code>{{outcome_context}}</code> — adaptive opener based on prior outreach
+      <code>{{outcome_context}}</code> — adaptive opener (email)
       &nbsp;·&nbsp;
-      <code>{{review_hook}}</code> — hook from online reviews (if found)
+      <code>{{review_hook}}</code> — review signal hook
       &nbsp;·&nbsp;
-      <code>{{sender_email}}</code> — your send-from address
+      <code>{{sender_email}}</code>
+      &nbsp;·&nbsp;
+      <code>{{sender_phone}}</code>
     </p>
   </div>
 </div>
@@ -29,23 +31,29 @@
 <div class="col-12 col-xl-6" id="step-{{ step }}">
   <div class="card task-card">
     <div class="card-body">
-      <h6 class="fw-bold mb-1">{{ tmpl.name }}</h6>
+      <h6 class="fw-bold mb-1">
+        {% if step == 5 %}💬{% elif step == 2 %}📱{% else %}✉️{% endif %}
+        {{ tmpl.name }}
+      </h6>
       <div class="text-muted small mb-3">
         {% for touch in cadence_def if touch.step == step %}
           Day {{ touch.day }} · {{ touch.label }}
         {% endfor %}
         {% if step == 2 %}Day 1 · Voicemail Script{% endif %}
+        {% if step == 5 %}<span class="badge bg-success ms-1">SMS</span>{% endif %}
       </div>
 
       <form method="POST" action="/templates/save">
         <input type="hidden" name="step" value="{{ step }}">
-        {% if tmpl.subject is not none and tmpl.subject != '' or step != 2 %}
+        {% if step not in (2, 5) %}
         <div class="mb-2">
           <label class="form-label small text-muted mb-1">Subject</label>
           <input type="text" name="subject" class="form-control form-control-sm"
                  value="{{ tmpl.subject or '' }}"
-                 placeholder="{{ 'N/A for VM' if step == 2 else 'Subject line' }}">
+                 placeholder="Subject line">
         </div>
+        {% else %}
+        <input type="hidden" name="subject" value="">
         {% endif %}
         <div class="mb-2">
           <label class="form-label small text-muted mb-1">Body</label>

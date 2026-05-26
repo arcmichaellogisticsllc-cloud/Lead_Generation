@@ -41,9 +41,23 @@
         <table class="table table-sm table-borderless mb-0">
           <tr><td class="text-muted">Organizer</td><td class="fw-semibold">{{ lead.organizer_name or '—' }}</td></tr>
           <tr><td class="text-muted">Phone</td>
-              <td>{% if lead.filer_phone %}<a href="tel:{{ lead.filer_phone }}">{{ lead.filer_phone }}</a>{% else %}—{% endif %}</td></tr>
+              <td>
+                {% if best_phone %}
+                  <a href="tel:{{ best_phone }}">{{ best_phone }}</a>
+                  {% if lead.filer_phone and lead.business_phone and lead.filer_phone != lead.business_phone %}
+                  <div class="small text-muted mt-1">
+                    <a href="tel:{{ lead.business_phone }}">{{ lead.business_phone }}</a>
+                    <span class="badge bg-light text-muted ms-1">business</span>
+                  </div>
+                  {% endif %}
+                {% else %}—{% endif %}
+              </td></tr>
           <tr><td class="text-muted">Email</td>
-              <td>{% if lead.filer_email %}<a href="mailto:{{ lead.filer_email }}">{{ lead.filer_email }}</a>{% else %}—{% endif %}</td></tr>
+              <td>
+                {% if best_email %}
+                  <a href="mailto:{{ best_email }}">{{ best_email }}</a>
+                {% else %}—{% endif %}
+              </td></tr>
           <tr><td class="text-muted">Address</td><td>{{ lead.principal_office_address or '—' }}</td></tr>
           <tr><td class="text-muted">Category</td><td>{{ lead.industry_category or '—' }}</td></tr>
           <tr><td class="text-muted">Formed</td><td>{{ lead.formation_date or '—' }}</td></tr>
@@ -151,10 +165,27 @@
             {% if task.status == 'done' %}
             <i class="bi bi-check-circle-fill text-success"></i>
             {% elif is_next %}
-            <button class="btn btn-sm btn-success py-0 px-2 complete-btn"
-                    data-task-id="{{ task.id }}"
-                    data-type="{{ task.task_type }}"
-                    data-cn="{{ lead.control_number }}">✓</button>
+            <div class="d-flex gap-1 align-items-center flex-wrap">
+              {% if task.task_type in ('call', 'vm') and best_phone %}
+              <a href="tel:{{ best_phone }}"
+                 class="btn btn-sm btn-outline-success py-0 px-2"
+                 title="Dial {{ best_phone }}">📞</a>
+              {% endif %}
+              {% if task.task_type == 'message' and best_phone %}
+              <a href="{{ rendered[5].sms if rendered[5] else 'sms:' + best_phone }}"
+                 class="btn btn-sm btn-outline-info py-0 px-2"
+                 title="Open Messages">💬</a>
+              {% endif %}
+              {% if task.task_type == 'email' and rendered[task.step] and rendered[task.step].mailto %}
+              <a href="{{ rendered[task.step].mailto }}"
+                 class="btn btn-sm btn-outline-dark py-0 px-2"
+                 title="Open in Mail">✉️</a>
+              {% endif %}
+              <button class="btn btn-sm btn-success py-0 px-2 complete-btn"
+                      data-task-id="{{ task.id }}"
+                      data-type="{{ task.task_type }}"
+                      data-cn="{{ lead.control_number }}">✓</button>
+            </div>
             {% endif %}
           </div>
           {% endfor %}
@@ -171,12 +202,59 @@
   <!-- RIGHT: Email drafts + log -->
   <div class="col-lg-8">
 
-    <!-- Email drafts (accordion) -->
+    <!-- Outreach drafts -->
     <div class="card task-card mb-3">
       <div class="card-body">
-        <h6 class="fw-bold mb-3">Email Drafts</h6>
+        <h6 class="fw-bold mb-3">Outreach Scripts</h6>
+
+        <!-- SMS draft (Step 5) -->
+        {% if rendered[5] %}
+        <div class="mb-3 p-3 rounded" style="background:#e8f5e9;border-left:3px solid #4caf50">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="small fw-bold">💬 Day 3 — Text Message</span>
+            {% if not best_phone %}
+            <span class="badge bg-warning text-dark">No phone on file</span>
+            {% endif %}
+          </div>
+          <div class="small" style="white-space:pre-wrap;font-family:inherit">{{ rendered[5].body }}</div>
+          <div class="mt-2 d-flex gap-2 flex-wrap">
+            {% if rendered[5].sms %}
+            <a href="{{ rendered[5].sms }}" class="btn btn-sm btn-success">
+              <i class="bi bi-chat-dots me-1"></i>Open Messages
+            </a>
+            {% endif %}
+            <button class="btn btn-sm btn-outline-secondary copy-btn"
+                    data-text="{{ rendered[5].body | tojson }}">
+              <i class="bi bi-clipboard"></i> Copy
+            </button>
+            <a href="/templates#step-5" class="btn btn-sm btn-link text-muted p-0 align-self-center">Edit →</a>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- VM script (Step 2) -->
+        {% if rendered[2] %}
+        <div class="mb-3 p-3 bg-light rounded">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="small fw-bold">📱 Voicemail Script</span>
+            {% if rendered[2].tel %}
+            <a href="{{ rendered[2].tel }}" class="btn btn-sm btn-outline-success py-0 px-2">📞 Dial</a>
+            {% endif %}
+          </div>
+          <em class="small">{{ rendered[2].body }}</em>
+          <div class="mt-2">
+            <button class="btn btn-sm btn-outline-secondary copy-btn"
+                    data-text="{{ rendered[2].body | tojson }}">
+              <i class="bi bi-clipboard"></i> Copy Script
+            </button>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Email drafts (accordion) -->
+        <div class="small fw-semibold text-muted mb-2 mt-1">✉️ Email Drafts</div>
         <div class="accordion accordion-flush" id="emailAccordion">
-          {% for step, tmpl in rendered.items() if step != 2 %}
+          {% for step, tmpl in rendered.items() if tmpl.type == 'email' %}
           <div class="accordion-item">
             <h2 class="accordion-header">
               <button class="accordion-button collapsed py-2 small" type="button"
@@ -193,7 +271,7 @@
               <div class="accordion-body p-2">
                 <div class="email-draft p-3">
                   <div class="text-muted small mb-1">
-                    <strong>To:</strong> {{ lead.filer_email or '[email]' }}
+                    <strong>To:</strong> {{ best_email or '[email not found]' }}
                     &nbsp;|&nbsp;
                     <strong>Subject:</strong> {{ tmpl.subject }}
                   </div>
@@ -219,14 +297,6 @@
           </div>
           {% endfor %}
         </div>
-
-        <!-- VM script -->
-        {% if rendered[2] %}
-        <div class="mt-3 p-3 bg-light rounded">
-          <div class="small text-muted fw-bold mb-1">📱 VM Script</div>
-          <em class="small">{{ rendered[2].body }}</em>
-        </div>
-        {% endif %}
       </div>
     </div>
 

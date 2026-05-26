@@ -108,21 +108,41 @@
         {% endif %}
       </div>
 
-      {% if task.filer_phone %}
+      {% set phone = task.filer_phone or task.business_phone %}
+      {% if phone %}
       <div class="text-muted small mb-2">
-        <i class="bi bi-telephone me-1"></i>{{ task.filer_phone }}
+        <i class="bi bi-telephone me-1"></i>
+        <a href="tel:{{ phone }}" class="text-muted">{{ phone }}</a>
       </div>
       {% endif %}
 
       <div class="d-flex gap-2 flex-wrap mt-1">
+        {% if task.task_type in ('call', 'vm') and phone %}
+        <a href="tel:{{ phone }}" class="btn btn-sm btn-outline-success">
+          📞 Dial
+        </a>
+        {% elif task.task_type == 'message' and phone %}
+        <a href="sms:{{ phone }}" class="btn btn-sm btn-outline-info">
+          💬 Text
+        </a>
+        {% elif task.task_type == 'email' and task.filer_email %}
+        <a href="/leads/{{ task.control_number }}#email-{{ task.step }}"
+           class="btn btn-sm btn-outline-dark">
+          ✉️ Email
+        </a>
+        {% else %}
         <a href="/leads/{{ task.control_number }}" class="btn btn-sm btn-outline-primary">
           Open Lead
+        </a>
+        {% endif %}
+        <a href="/leads/{{ task.control_number }}" class="btn btn-sm btn-outline-secondary">
+          View
         </a>
         <button class="btn btn-sm btn-success complete-btn"
                 data-task-id="{{ task.id }}"
                 data-cn="{{ task.control_number }}"
                 data-type="{{ task.task_type }}">
-          ✓ Mark Done
+          ✓ Done
         </button>
       </div>
     </div>
