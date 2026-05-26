@@ -63,7 +63,7 @@ DEFAULT_TEMPLATES = {
         "subject": "Quick question for {{business_type}} owner",
         "body": """Hey {{first_name}} —
 
-{{pain_point}}?{{review_hook}}
+{{web_presence}} — {{pain_point}}?{{review_detail}}
 
 — Marcus McGee
 {{sender_email}}""",
@@ -71,7 +71,7 @@ DEFAULT_TEMPLATES = {
     8: {
         "name": "Day 6 — Bump",
         "subject": "Re: Quick question for {{business_type}} owner",
-        "body": """{{outcome_context}}Bumping this up —
+        "body": """{{outcome_context}}Bumping this up —{{stack_hook}}
 
 Most {{business_type}} businesses in {{city}} are losing 2–3 jobs a month to customers who aren't carrying cash or checks. Is that showing up in your numbers yet?
 
@@ -118,6 +118,27 @@ Reach out whenever it's the right time.
 
 SENDER_EMAIL = "mmcgee@ippayware.com"
 SENDER_PHONE = os.environ.get("SENDER_PHONE", "")
+
+# ---------------------------------------------------------------------------
+# Processor / SaaS — specific acknowledgment copy for the bump email.
+# These references position IPPayware as complementary, not competitive.
+# ---------------------------------------------------------------------------
+_PROCESSOR_COPY: dict[str, str] = {
+    "square":   "I see you're set up with Square — most field service businesses use it for in-person, but the gap is job-site collection before the crew leaves.",
+    "stripe":   "I see you're using Stripe — great for online, but collecting at the job site is still a separate problem for most service businesses I work with.",
+    "toast":    "I see you're on Toast — that covers the counter, but what do customers do when they want to pay remotely or split a job invoice?",
+    "clover":   "I see you're using Clover — solid for counter payments, but what about field collection and on-site invoicing before the truck leaves?",
+    "paypal":   'I see you\'re accepting PayPal — most customers who need to "send a PayPal" end up delaying a day or two. That adds up.',
+}
+
+_SAAS_COPY: dict[str, str] = {
+    "servicetitan":  "I see you're running ServiceTitan — great for dispatch, but most techs I talk to are still collecting cash or waiting on checks at job close.",
+    "housecall_pro": "I see you're using Housecall Pro — solid for scheduling, but what's your collection rate before the truck leaves the driveway?",
+    "jobber":        "I see you're using Jobber — most Jobber shops I talk to still have a 20–30% 'pay later' rate at job close.",
+    "mindbody":      "I noticed you're on Mindbody — handles memberships well, but what about same-day collection for one-off services?",
+    "vagaro":        "I see you're using Vagaro — solid for booking, but what happens when a client wants to pay and their card isn't on file?",
+    "booker":        "I see you're on Booker — works well for recurring clients, but what about walk-ins and field estimates?",
+}
 
 # Industry-matched proof points — keyed by normalized industry slug
 PROOF_POINTS: dict[str, str] = {
@@ -215,6 +236,68 @@ def _review_hook(lead: dict) -> str:
     return "\n\nI came across your business online — looks like you're building a reputation in the area."
 
 
+def _web_presence(lead: dict) -> str:
+    """Reference to where we found this business — anchors the cold reach."""
+    if lead.get("website"):
+        try:
+            from urllib.parse import urlparse
+            domain = re.sub(r"^www\.", "", urlparse(lead["website"]).netloc)
+            return f"I came across your site ({domain})"
+        except Exception:
+            return "I came across your site"
+    if lead.get("yelp_url"):
+        return "I came across your Yelp listing"
+    if lead.get("google_maps_url"):
+        return "I found your Google listing"
+    if lead.get("angi_url"):
+        return "I found your Angi profile"
+    return "I came across your business"
+
+
+def _stack_hook(lead: dict) -> str:
+    """Processor/SaaS acknowledgment + gap pivot, or website-no-payment signal.
+
+    Returns a paragraph prefixed with \\n\\n when a signal is present, or ''
+    so the surrounding template whitespace collapses cleanly when empty.
+    """
+    processor = (lead.get("detected_payment_processor") or "").lower()
+    saas      = (lead.get("detected_vertical_saas") or "").lower()
+    has_web   = bool(lead.get("has_website"))
+    has_pay   = bool(lead.get("has_online_payment"))
+    invoice   = bool(lead.get("invoice_workflow_signals"))
+
+    if processor in _PROCESSOR_COPY:
+        return "\n\n" + _PROCESSOR_COPY[processor]
+    if saas in _SAAS_COPY:
+        return "\n\n" + _SAAS_COPY[saas]
+    if has_web and not has_pay:
+        return "\n\nI visited your site — no way for customers to pay online. That's the most common gap I help fix."
+    if invoice and not has_pay:
+        return "\n\nI noticed your site mentions invoicing — the gap I see most is invoice-to-collection lag: jobs getting paid 10–30 days after they close."
+    return ""
+
+
+def _review_detail(lead: dict) -> str:
+    """More specific review reference using the actual snippet when friction is found."""
+    snippet = lead.get("review_snippet") or ""
+    if not snippet or not lead.get("review_has_payment_friction"):
+        return ""
+    kw_list = ["cash only", "cash", "check", "credit card", "card", "payment",
+               "invoice", "venmo", "zelle", "bill"]
+    best = ""
+    for kw in kw_list:
+        idx = snippet.lower().find(kw)
+        if idx >= 0:
+            start = max(0, idx - 25)
+            end   = min(len(snippet), idx + 80)
+            frag  = snippet[start:end].strip(' .,!"')
+            if not best or len(frag) < len(best):
+                best = frag
+    if best and len(best) > 10:
+        return f'\n\nI saw a review that mentioned: "{best}…" — that\'s exactly the gap I help close.'
+    return "\n\nI noticed some reviews mention payment friction. That's exactly what I help with."
+
+
 def _sanitize_template_value(v: str) -> str:
     """Strip control characters that could inject headers into mailto: body."""
     return v.replace("\r", "").replace("\n", " ").replace("\0", "")
@@ -238,6 +321,11 @@ def _render_template_body(body: str, lead: dict, log_history: list[dict] | None 
     review_hook   = _review_hook(lead)
     entity_name   = _sanitize_template_value(lead.get("entity_name") or "")
 
+    # Phase 5 — context-aware personalization signals
+    web_presence  = _web_presence(lead)
+    stack_hook    = _stack_hook(lead)
+    review_detail = _review_detail(lead)
+
     return (
         body
         .replace("{{first_name}}",      first_name)
@@ -249,6 +337,9 @@ def _render_template_body(body: str, lead: dict, log_history: list[dict] | None 
         .replace("{{pain_point}}",      pain_point)
         .replace("{{outcome_context}}", outcome_ctx)
         .replace("{{review_hook}}",     review_hook)
+        .replace("{{web_presence}}",    web_presence)
+        .replace("{{stack_hook}}",      stack_hook)
+        .replace("{{review_detail}}",   review_detail)
         .replace("{{sender_email}}",    SENDER_EMAIL)
         .replace("{{sender_phone}}",    SENDER_PHONE)
     )

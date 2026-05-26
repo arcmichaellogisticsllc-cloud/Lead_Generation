@@ -128,6 +128,86 @@
       </div>
     </div>
 
+    <!-- Personalization signals -->
+    <div class="card task-card mb-3">
+      <div class="card-body">
+        <h6 class="fw-bold mb-2" style="font-size:.85rem">
+          Outreach Signals
+          <span class="text-muted fw-normal ms-1" style="font-size:.75rem">driving copy</span>
+        </h6>
+        <div class="vstack gap-1" style="font-size:.78rem">
+
+          {# Web presence #}
+          {% if lead.website %}
+          <div><span class="text-success me-1">✓</span>
+            Website: <a href="{{ lead.website }}" target="_blank" class="text-muted">{{ lead.website[:35] }}</a>
+          </div>
+          {% elif lead.yelp_url %}
+          <div><span class="text-success me-1">✓</span>
+            <a href="{{ lead.yelp_url }}" target="_blank" class="text-muted">Yelp listing found</a>
+          </div>
+          {% elif lead.google_maps_url %}
+          <div><span class="text-success me-1">✓</span>
+            <a href="{{ lead.google_maps_url }}" target="_blank" class="text-muted">Google listing found</a>
+          </div>
+          {% else %}
+          <div class="text-muted"><span class="me-1">—</span>No web presence found</div>
+          {% endif %}
+
+          {# Payment stack #}
+          {% if lead.detected_payment_processor %}
+          <div><span class="text-warning me-1">⚡</span>
+            Processor: <span class="fw-semibold">{{ lead.detected_payment_processor }}</span>
+            <span class="text-muted">(stack_hook active)</span>
+          </div>
+          {% elif lead.detected_vertical_saas %}
+          <div><span class="text-warning me-1">⚡</span>
+            SaaS: <span class="fw-semibold">{{ lead.detected_vertical_saas }}</span>
+            <span class="text-muted">(stack_hook active)</span>
+          </div>
+          {% elif lead.has_website and not lead.has_online_payment %}
+          <div><span class="text-info me-1">↗</span>
+            Site found, no online payment
+            <span class="text-muted">(stack_hook active)</span>
+          </div>
+          {% elif lead.invoice_workflow_signals and not lead.has_online_payment %}
+          <div><span class="text-info me-1">↗</span>
+            Invoice signals, no payment
+            <span class="text-muted">(stack_hook active)</span>
+          </div>
+          {% else %}
+          <div class="text-muted"><span class="me-1">—</span>No stack signal</div>
+          {% endif %}
+
+          {# Review friction #}
+          {% if lead.review_has_payment_friction %}
+          <div><span class="text-danger me-1">⚠</span>
+            Payment friction in reviews
+            <span class="text-muted">(review_detail active)</span>
+          </div>
+          {% elif lead.review_snippet %}
+          <div><span class="text-success me-1">✓</span>
+            Review snippet found
+          </div>
+          {% else %}
+          <div class="text-muted"><span class="me-1">—</span>No review signals</div>
+          {% endif %}
+
+          {# Contact coverage #}
+          {% if best_phone and best_email %}
+          <div><span class="text-success me-1">✓</span>Phone + email on file</div>
+          {% elif best_phone %}
+          <div><span class="text-warning me-1">⚠</span>Phone only — no email</div>
+          {% elif best_email %}
+          <div><span class="text-warning me-1">⚠</span>Email only — no phone</div>
+          {% else %}
+          <div class="text-danger"><span class="me-1">✗</span>No contact info</div>
+          {% endif %}
+
+        </div>
+      </div>
+    </div>
+
     <!-- Cadence progress -->
     <div class="card task-card">
       <div class="card-body">
