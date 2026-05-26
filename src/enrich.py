@@ -16,10 +16,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from enrichment import google_places
 from enrichment.website_finder import find_website
 from src.classify import is_registered_agent_service
 from src.detect_payment_stack import detect_payment_stack
 from src.find_profiles import find_profiles
+from src.profile_phone_scraper import scrape_best_phone
 from src.review_scraper import find_review_signals
 from src.score import score_lead
 
@@ -83,6 +85,21 @@ def enrich_lead(lead: dict, browser_page=None, *, find_social: bool = True, find
     result["angi_url"]         = profiles.get("angi")
     result["google_maps_url"]  = profiles.get("google_maps")
     result["profiles_searched"] = 1 if find_social else 0
+
+    # Phone scraping — try website + Yelp + Angi before falling back to Places API
+    if not result.get("business_phone"):
+        scraped = scrape_best_phone(website_url, profiles.get("yelp"), profiles.get("angi"))
+        if scraped:
+            result["business_phone"] = scraped
+
+    # Google Places fallback — fills phone + website when both are still missing
+    if not result.get("business_phone") and not result.get("filer_phone"):
+        places = google_places.lookup(entity_name, lead.get("principal_office_address"))
+        if places:
+            result["business_phone"]  = result.get("business_phone") or places.get("phone")
+            result["google_place_id"] = places.get("place_id")
+            if places.get("website") and not result.get("website"):
+                result["website"] = places.get("website")
 
     # Review signals
     if find_reviews and entity_name:
@@ -217,6 +234,7 @@ def enrich_batch(
                         facebook_url=?, instagram_url=?, linkedin_url=?,
                         yelp_url=?, angi_url=?, google_maps_url=?,
                         profiles_searched=?,
+                        business_phone=?, google_place_id=?,
                         review_snippet=?, review_source=?,
                         review_has_payment_friction=?,
                         fit_score=?, score_breakdown=?, priority=?,
@@ -239,6 +257,8 @@ def enrich_batch(
                         updated.get("angi_url"),
                         updated.get("google_maps_url"),
                         int(updated.get("profiles_searched", 0)),
+                        updated.get("business_phone"),
+                        updated.get("google_place_id"),
                         updated.get("review_snippet"),
                         updated.get("review_source"),
                         int(updated.get("review_has_payment_friction", 0)),

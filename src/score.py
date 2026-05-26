@@ -117,8 +117,8 @@ def score_lead(
 
     # --- Contactability ---
     contact = weights.get("contactability", {})
-    has_email  = bool(entity_data.get("filer_email"))
-    has_phone  = bool(entity_data.get("filer_phone"))
+    has_email  = bool(entity_data.get("filer_email") or entity_data.get("business_email") or entity_data.get("owner_email"))
+    has_phone  = bool(entity_data.get("filer_phone") or entity_data.get("business_phone") or entity_data.get("owner_personal_phone"))
     has_org    = bool(entity_data.get("organizer_name"))
     has_website_contact = bool(
         entity_data.get("website")
