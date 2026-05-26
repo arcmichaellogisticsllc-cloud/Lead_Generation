@@ -46,6 +46,16 @@ JOBS = [
         "schedule": "Mon–Fri 7:30 AM (digest)",
         "hour": 7, "minute": 30,
     },
+    {
+        "label":    "com.ga-payment-leads.calibrate",
+        "script":   PROJECT / "scripts" / "scoring_feedback.py",
+        "args":     ["--apply", "--days", "90"],
+        "log_out":  PROJECT / "data" / "calibrate_stdout.log",
+        "log_err":  PROJECT / "data" / "calibrate_stderr.log",
+        "schedule": "Mon only 8:00 AM (weekly calibration)",
+        "hour": 8, "minute": 0,
+        "weekdays": [1],   # Monday only
+    },
 ]
 
 # Legacy single-job references (kept for --remove backward compat)
@@ -119,11 +129,12 @@ def _already_loaded(label: str) -> bool:
 
 
 def _make_plist(job: dict) -> str:
+    weekdays = job.get("weekdays", list(range(1, 6)))  # Mon–Fri by default
     days_xml = "\n        ".join(
         f'<dict><key>Weekday</key><integer>{d}</integer>'
         f'<key>Hour</key><integer>{job["hour"]}</integer>'
         f'<key>Minute</key><integer>{job["minute"]}</integer></dict>'
-        for d in range(1, 6)
+        for d in weekdays
     )
     extra_args_xml = "\n        ".join(
         f"<string>{arg}</string>" for arg in job.get("args", [])
@@ -178,10 +189,11 @@ def install() -> None:
             print(f"  Loaded: {job['label']}  ({job['schedule']})")
 
     print()
-    print("Verify:     launchctl list | grep ga-payment")
-    print("Run full:   launchctl start com.ga-payment-leads.daily")
-    print("Run quick:  launchctl start com.ga-payment-leads.quick")
-    print("Log:        tail -f data/pipeline.log")
+    print("Verify:      launchctl list | grep ga-payment")
+    print("Run full:    launchctl start com.ga-payment-leads.daily")
+    print("Run quick:   launchctl start com.ga-payment-leads.quick")
+    print("Calibrate:   launchctl start com.ga-payment-leads.calibrate")
+    print("Log:         tail -f data/pipeline.log")
 
 
 def remove() -> None:

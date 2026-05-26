@@ -31,6 +31,10 @@ def main() -> None:
         choices=["HOT", "WARM", "COLD", "ALL"],
         help="Filter by priority (default: ALL)",
     )
+    parser.add_argument(
+        "--apply", action="store_true",
+        help="Write suggested weight adjustments to config/scoring_weights.yaml",
+    )
     args = parser.parse_args()
 
     init_db()
@@ -78,7 +82,7 @@ def main() -> None:
                 answer = input("  Good lead? [y/n/s]: ").strip().lower()
             except (EOFError, KeyboardInterrupt):
                 print("\n[stopped]")
-                _analyze_and_suggest(labels, breakdowns)
+                _analyze_and_suggest(labels, breakdowns, apply=args.apply)
                 return
             if answer in ("y", "n", "s", "skip"):
                 if answer in ("y", "n"):
@@ -87,12 +91,13 @@ def main() -> None:
             print("  Enter y, n, or s")
 
     print("\n" + "─" * 70)
-    _analyze_and_suggest(labels, breakdowns)
+    _analyze_and_suggest(labels, breakdowns, apply=args.apply)
 
 
 def _analyze_and_suggest(
     labels: dict[str, str],
     breakdowns: dict[str, dict],
+    apply: bool = False,
 ) -> None:
     if len(labels) < 3:
         print("\nNot enough labeled leads to suggest adjustments (need ≥ 3).")
@@ -103,39 +108,51 @@ def _analyze_and_suggest(
 
     print(f"\nLabeled {len(labels)} leads: {len(good_cn)} good, {len(bad_cn)} bad\n")
 
-    # Collect all component keys across all breakdowns
     all_keys: set[str] = set()
     for bd in breakdowns.values():
         all_keys.update(bd.keys())
 
-    suggestions: list[tuple[float, str, str]] = []
+    # Frequency-based comparison: how often is each component nonzero in good vs bad leads
+    suggestions: list[tuple[float, str, str, int]] = []
 
     for key in sorted(all_keys):
         good_vals = [breakdowns[cn].get(key, 0) for cn in good_cn if cn in breakdowns]
         bad_vals  = [breakdowns[cn].get(key, 0) for cn in bad_cn  if cn in breakdowns]
         if not good_vals and not bad_vals:
             continue
-        avg_good = sum(good_vals) / len(good_vals) if good_vals else 0
-        avg_bad  = sum(bad_vals)  / len(bad_vals)  if bad_vals  else 0
-        diff     = avg_good - avg_bad
-        suggestions.append((diff, key, f"avg_good={avg_good:.1f}  avg_bad={avg_bad:.1f}"))
+        freq_good = sum(1 for v in good_vals if v != 0) / len(good_vals) if good_vals else 0
+        freq_bad  = sum(1 for v in bad_vals  if v != 0) / len(bad_vals)  if bad_vals  else 0
+        diff      = freq_good - freq_bad
+        delta     = max(-2, min(2, round(diff * 5)))
+        note      = f"good={freq_good:.0%}  bad={freq_bad:.0%}"
+        suggestions.append((diff, key, note, delta))
 
     suggestions.sort(key=lambda x: abs(x[0]), reverse=True)
 
-    print("Score component correlations with 'good lead' labels:")
-    print(f"{'Component':<35} {'Δ (good−bad)':>12}  Notes")
+    print(f"{'Component':<35} {'Δfreq':>7}  {'Direction':<14}  Notes")
     print("─" * 70)
-    for diff, key, note in suggestions[:15]:
-        direction = "↑ raise weight" if diff > 0 else "↓ lower weight"
-        print(f"  {key:<33} {diff:>+8.1f}   {direction}  ({note})")
+    for diff, key, note, delta in suggestions[:15]:
+        direction = f"↑ +{delta}" if delta > 0 else (f"↓ {delta}" if delta < 0 else "  (no change)")
+        print(f"  {key:<33} {diff:>+6.0%}  {direction:<14}  ({note})")
 
-    print(
-        "\n[tune_scoring] These are suggestions only. "
-        "Edit config/scoring_weights.yaml manually, then run:\n"
-        "  python src/pipeline.py score\n"
-        "  python src/pipeline.py export\n"
-        "to see updated rankings."
-    )
+    if apply:
+        from src.weight_manager import apply_adjustments
+        adj = {key: delta for _, key, _, delta in suggestions if delta != 0}
+        if adj:
+            applied = apply_adjustments(adj, reason="tune_scoring interactive session")
+            print("\n  Weights updated:")
+            for ykey, chg in applied.items():
+                arrow = "↑" if chg["delta"] > 0 else "↓"
+                print(f"    {arrow} {ykey}: {chg['old']} → {chg['new']}")
+            if not applied:
+                print("  No changes applied (all deltas rounded to 0).")
+        else:
+            print("\n  No adjustments to apply.")
+    else:
+        print(
+            "\n  Re-run with --apply to write these changes to "
+            "config/scoring_weights.yaml."
+        )
 
 
 def _fmt_breakdown(bd: dict) -> str:
