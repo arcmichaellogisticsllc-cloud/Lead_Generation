@@ -22,17 +22,28 @@ JOBS = [
     {
         "label":    "com.ga-payment-leads.daily",
         "script":   PROJECT / "scripts" / "daily_pipeline.py",
+        "args":     [],
         "log_out":  PROJECT / "data" / "launchd_stdout.log",
         "log_err":  PROJECT / "data" / "launchd_stderr.log",
-        "schedule": "Mon–Fri 7:00 AM",
+        "schedule": "Mon–Fri 7:00 AM (full scan)",
         "hour": 7, "minute": 0,
+    },
+    {
+        "label":    "com.ga-payment-leads.quick",
+        "script":   PROJECT / "scripts" / "daily_pipeline.py",
+        "args":     ["--mode", "quick"],
+        "log_out":  PROJECT / "data" / "quick_stdout.log",
+        "log_err":  PROJECT / "data" / "quick_stderr.log",
+        "schedule": "Mon–Fri 1:00 PM (quick scan)",
+        "hour": 13, "minute": 0,
     },
     {
         "label":    "com.ga-payment-leads.digest",
         "script":   PROJECT / "scripts" / "morning_digest.py",
+        "args":     [],
         "log_out":  PROJECT / "data" / "digest_stdout.log",
         "log_err":  PROJECT / "data" / "digest_stderr.log",
-        "schedule": "Mon–Fri 7:30 AM",
+        "schedule": "Mon–Fri 7:30 AM (digest)",
         "hour": 7, "minute": 30,
     },
 ]
@@ -54,6 +65,7 @@ PLIST_TEMPLATE = """\
     <array>
         <string>{python}</string>
         <string>{script}</string>
+        {extra_args_xml}
     </array>
 
     <key>WorkingDirectory</key>
@@ -113,10 +125,14 @@ def _make_plist(job: dict) -> str:
         f'<key>Minute</key><integer>{job["minute"]}</integer></dict>'
         for d in range(1, 6)
     )
+    extra_args_xml = "\n        ".join(
+        f"<string>{arg}</string>" for arg in job.get("args", [])
+    )
     return PLIST_TEMPLATE.format(
         label=job["label"],
         python=str(VENV_PY),
         script=str(job["script"]),
+        extra_args_xml=extra_args_xml,
         project=str(PROJECT),
         log_out=str(job["log_out"]),
         log_err=str(job["log_err"]),
@@ -162,9 +178,10 @@ def install() -> None:
             print(f"  Loaded: {job['label']}  ({job['schedule']})")
 
     print()
-    print("Verify:    launchctl list | grep ga-payment")
-    print("Run now:   launchctl start com.ga-payment-leads.daily")
-    print("Log:       tail -f data/pipeline.log")
+    print("Verify:     launchctl list | grep ga-payment")
+    print("Run full:   launchctl start com.ga-payment-leads.daily")
+    print("Run quick:  launchctl start com.ga-payment-leads.quick")
+    print("Log:        tail -f data/pipeline.log")
 
 
 def remove() -> None:

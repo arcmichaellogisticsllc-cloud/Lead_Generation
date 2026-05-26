@@ -1,22 +1,31 @@
 """
-Daily pipeline runner — called by launchd at 7 AM on weekdays.
+Daily pipeline runner — called by launchd at 7 AM (full) and 1 PM (quick) on weekdays.
 
 Runs unattended (no interactive prompts).
 Logs everything to data/pipeline.log.
 Sends a macOS notification when done.
 
+Modes:
+  full  (default) — all 6 stages, ~15–25 min
+  quick           — stages 1–3 + 5 only (no enrich, no export), ~8–12 min
+
 Stages:
   1. Discover  — scan up to DISCOVER_SCAN new eCorp businessIds
   2. Download  — pull PDFs for new tier-eligible entities
   3. Extract   — parse PDFs + classify + score
-  4. Enrich    — website search + payment stack (Bing, patchright)
+  4. Enrich    — website search + payment stack (Bing, patchright) [full only]
   5. Score     — final fit-score pass
-  6. Export    — write ranked CSV
+  6. Export    — write ranked CSV [full only]
+
+After scoring (both modes):
+  - Auto-starts cadence for HOT leads < 48h old when AUTO_CADENCE_HOT=1
+  - Fires per-lead macOS alert + optional Twilio SMS for new HOT leads
 
 Lock file (data/.pipeline.lock) prevents overlapping runs.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
@@ -45,8 +54,38 @@ logger = logging.getLogger(__name__)
 # IDs to scan per daily run (~8–12 min at 1.5 s/ID)
 DAILY_SCAN = int(os.environ.get("DISCOVER_SCAN", "300"))
 
+# Cadence definition — must stay in sync with app.py
+_CADENCE = [
+    {"step": 1,  "day": 1,  "type": "call",    "label": "Call"},
+    {"step": 2,  "day": 1,  "type": "vm",      "label": "Leave Voicemail"},
+    {"step": 3,  "day": 1,  "type": "email",   "label": "Send Intro Email"},
+    {"step": 4,  "day": 3,  "type": "call",    "label": "Call"},
+    {"step": 5,  "day": 3,  "type": "message", "label": "Short Connect Message"},
+    {"step": 6,  "day": 3,  "type": "log",     "label": "Log Day 3 Outcome"},
+    {"step": 7,  "day": 6,  "type": "call",    "label": "Call"},
+    {"step": 8,  "day": 6,  "type": "email",   "label": "Bump Email"},
+    {"step": 9,  "day": 9,  "type": "call",    "label": "Call"},
+    {"step": 10, "day": 9,  "type": "email",   "label": "Reference Email"},
+    {"step": 11, "day": 12, "type": "call",    "label": "Final Call"},
+    {"step": 12, "day": 12, "type": "email",   "label": "Close Loop Email"},
+]
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="GA Leads daily pipeline")
+    parser.add_argument(
+        "--mode",
+        choices=["full", "quick"],
+        default="full",
+        help="full = all stages; quick = discover/download/extract/score only (no enrich/export)",
+    )
+    return parser.parse_args()
+
 
 def main() -> None:
+    args = _parse_args()
+    mode = args.mode
+
     if not _acquire_lock():
         logger.warning("Pipeline already running (lock file exists). Exiting.")
         sys.exit(0)
@@ -63,8 +102,10 @@ def main() -> None:
     }
 
     try:
+        _headless = os.environ.get("BROWSER_HEADLESS", "0") != "0"
+
         logger.info("=" * 50)
-        logger.info("Daily pipeline starting — %s", date.today())
+        logger.info("Daily pipeline starting — %s  [mode=%s]", date.today(), mode)
         logger.info("=" * 50)
 
         from src.db import DB_PATH, get_connection, init_db, upsert_lead
@@ -127,7 +168,6 @@ def main() -> None:
             logger.info("Phase 2: Download %d PDFs", len(to_download))
             from patchright.sync_api import sync_playwright
             from src.discover import BASE_URL, USER_AGENT
-            _headless = os.environ.get("BROWSER_HEADLESS", "0") != "0"
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(
                     headless=_headless,
@@ -200,28 +240,31 @@ def main() -> None:
                 run_log["errors"].append(f"extract:{pdf_path.name}")
 
         # ── 4. Enrich ───────────────────────────────────────────────────
-        pending = conn.execute(
-            "SELECT COUNT(*) FROM leads WHERE has_website IS NULL AND tier IS NOT NULL"
-        ).fetchone()[0]
-
         enriched = 0
-        if pending:
-            logger.info("Phase 4: Enrich %d lead(s)", pending)
-            from patchright.sync_api import sync_playwright
-            from src.discover import USER_AGENT
-            with sync_playwright() as pw:
-                browser = pw.chromium.launch(
-                    headless=_headless,
-                    args=([] if _headless else ["--window-position=3000,3000"]),
-                )
-                ctx  = browser.new_context(user_agent=USER_AGENT,
-                                           viewport={"width": 1280, "height": 800})
-                page = ctx.new_page()
-                enriched, errs = enrich_batch(conn, browser_page=page)
-                browser.close()
-            run_log["enrichment_completed"] = enriched
-            if errs:
-                run_log["errors"].append(f"enrich:{errs} errors")
+        if mode == "full":
+            pending = conn.execute(
+                "SELECT COUNT(*) FROM leads WHERE has_website IS NULL AND tier IS NOT NULL"
+            ).fetchone()[0]
+
+            if pending:
+                logger.info("Phase 4: Enrich %d lead(s)", pending)
+                from patchright.sync_api import sync_playwright
+                from src.discover import USER_AGENT
+                with sync_playwright() as pw:
+                    browser = pw.chromium.launch(
+                        headless=_headless,
+                        args=([] if _headless else ["--window-position=3000,3000"]),
+                    )
+                    ctx  = browser.new_context(user_agent=USER_AGENT,
+                                               viewport={"width": 1280, "height": 800})
+                    page = ctx.new_page()
+                    enriched, errs = enrich_batch(conn, browser_page=page)
+                    browser.close()
+                run_log["enrichment_completed"] = enriched
+                if errs:
+                    run_log["errors"].append(f"enrich:{errs} errors")
+        else:
+            logger.info("Phase 4: Enrich — skipped (quick mode)")
 
         # ── 5. Score ────────────────────────────────────────────────────
         logger.info("Phase 5: Final rescore")
@@ -249,28 +292,37 @@ def main() -> None:
                      scored["priority"], lead["control_number"]),
                 )
 
-        # ── 6. Export ───────────────────────────────────────────────────
-        import csv
-        logger.info("Phase 6: Export")
-        today_rows = conn.execute(
-            "SELECT * FROM leads WHERE priority != 'SKIP' ORDER BY fit_score DESC"
-        ).fetchall()
-
-        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-        out_csv = EXPORT_DIR / f"daily_{date.today().isoformat()}.csv"
-        COLS = ["control_number","entity_name","entity_type","formation_date","tier",
-                "industry_category","fit_score","priority","organizer_name",
-                "filer_email","filer_phone","principal_office_address",
-                "website","has_website","has_online_payment",
-                "detected_payment_processor","outreach_status"]
-        with open(out_csv, "w", newline="", encoding="utf-8") as fh:
-            writer = csv.DictWriter(fh, fieldnames=COLS, extrasaction="ignore")
-            writer.writeheader()
-            for row in today_rows:
-                writer.writerow(dict(row))
-
-        # Count new HOT/WARM from today
+        # ── Post-score: auto-cadence + alerts ──────────────────────────
         today_str = str(date.today())
+        cutoff_48h = str(datetime.now() - timedelta(hours=48))
+
+        if os.environ.get("AUTO_CADENCE_HOT", "0") == "1":
+            _auto_start_cadences(conn, cutoff_48h, today_str)
+
+        _alert_hot_leads(conn, today_str, cutoff_48h, mode)
+
+        # ── 6. Export ───────────────────────────────────────────────────
+        if mode == "full":
+            import csv
+            logger.info("Phase 6: Export")
+            today_rows = conn.execute(
+                "SELECT * FROM leads WHERE priority != 'SKIP' ORDER BY fit_score DESC"
+            ).fetchall()
+
+            EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+            out_csv = EXPORT_DIR / f"daily_{date.today().isoformat()}.csv"
+            COLS = ["control_number","entity_name","entity_type","formation_date","tier",
+                    "industry_category","fit_score","priority","organizer_name",
+                    "filer_email","filer_phone","principal_office_address",
+                    "website","has_website","has_online_payment",
+                    "detected_payment_processor","outreach_status"]
+            with open(out_csv, "w", newline="", encoding="utf-8") as fh:
+                writer = csv.DictWriter(fh, fieldnames=COLS, extrasaction="ignore")
+                writer.writeheader()
+                for row in today_rows:
+                    writer.writerow(dict(row))
+        else:
+            logger.info("Phase 6: Export — skipped (quick mode)")
         new_hot  = conn.execute(
             "SELECT COUNT(*) FROM leads WHERE priority='HOT'  AND date(first_seen)=?",
             (today_str,)
@@ -305,6 +357,97 @@ def main() -> None:
         _notify_error(str(exc))
     finally:
         _release_lock()
+
+
+def _auto_start_cadences(conn, cutoff_48h: str, today_str: str) -> None:
+    """Start cadence for every HOT lead < 48 h old that has no cadence yet."""
+    rows = conn.execute(
+        """
+        SELECT l.control_number, l.entity_name
+        FROM leads l
+        LEFT JOIN cadence_tasks ct ON ct.control_number = l.control_number
+        WHERE l.priority = 'HOT'
+          AND l.first_seen >= ?
+          AND ct.id IS NULL
+        """,
+        (cutoff_48h,),
+    ).fetchall()
+
+    if not rows:
+        return
+
+    logger.info("Auto-cadence: starting cadence for %d HOT lead(s)", len(rows))
+    today = date.today()
+    for row in rows:
+        cn = row["control_number"]
+        try:
+            with conn:
+                conn.execute("DELETE FROM cadence_tasks WHERE control_number=?", (cn,))
+                for touch in _CADENCE:
+                    due = today + timedelta(days=touch["day"] - 1)
+                    conn.execute(
+                        """INSERT INTO cadence_tasks
+                           (control_number, step, cadence_day, task_type, label, due_date)
+                           VALUES (?,?,?,?,?,?)""",
+                        (cn, touch["step"], touch["day"], touch["type"], touch["label"], str(due)),
+                    )
+                conn.execute(
+                    """UPDATE leads SET
+                        outreach_status='IN_CADENCE',
+                        cadence_start_date=?,
+                        cadence_step=1,
+                        last_updated=CURRENT_TIMESTAMP
+                       WHERE control_number=?""",
+                    (today_str, cn),
+                )
+            logger.info("  Cadence started: %s (%s)", row["entity_name"], cn)
+        except Exception as exc:
+            logger.error("  Cadence start failed for %s: %s", cn, exc)
+
+
+def _alert_hot_leads(conn, today_str: str, cutoff_48h: str, mode: str) -> None:
+    """Fire macOS notification + optional SMS for each new HOT lead < 48 h old."""
+    rows = conn.execute(
+        """
+        SELECT control_number, entity_name, fit_score, filer_phone, industry_category
+        FROM leads
+        WHERE priority = 'HOT'
+          AND first_seen >= ?
+        ORDER BY fit_score DESC
+        """,
+        (cutoff_48h,),
+    ).fetchall()
+
+    if not rows:
+        return
+
+    alert_phone = os.environ.get("ALERT_PHONE", "").strip()
+    for row in rows:
+        name  = row["entity_name"] or row["control_number"]
+        score = row["fit_score"] or 0
+        cat   = row["industry_category"] or ""
+        msg   = f"Score {score} · {cat}" if cat else f"Score {score}"
+        _mac_notify(f"HOT lead [{mode}]: {name}", msg)
+        if alert_phone:
+            sms_body = f"HOT lead: {name} | {msg}"
+            _sms_alert(alert_phone, sms_body)
+
+
+def _sms_alert(phone: str, message: str) -> None:
+    """Send SMS via Twilio if credentials are configured. Silent no-op otherwise."""
+    sid   = os.environ.get("TWILIO_SID", "").strip()
+    token = os.environ.get("TWILIO_TOKEN", "").strip()
+    from_ = os.environ.get("TWILIO_FROM", "").strip()
+    if not (sid and token and from_):
+        return
+    try:
+        from twilio.rest import Client  # type: ignore
+        Client(sid, token).messages.create(to=phone, from_=from_, body=message[:160])
+        logger.info("SMS alert sent to %s", phone)
+    except ImportError:
+        logger.debug("twilio not installed — SMS alert skipped")
+    except Exception as exc:
+        logger.warning("SMS alert failed: %s", exc)
 
 
 def _write_notifications(conn, run_log: dict, today_str: str) -> None:

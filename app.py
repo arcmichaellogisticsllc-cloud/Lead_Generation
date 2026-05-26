@@ -304,7 +304,8 @@ def _today_tasks(conn) -> list[dict]:
         FROM cadence_tasks ct
         JOIN leads l ON ct.control_number = l.control_number
         WHERE ct.status = 'pending' AND ct.due_date <= ?
-        ORDER BY l.fit_score DESC, ct.due_date, ct.step
+        ORDER BY (l.fit_score * 1.0 / MAX(1, CAST(julianday('now') - julianday(l.formation_date) AS INTEGER))) DESC,
+                 ct.due_date, ct.step
         """,
         (today,),
     ).fetchall()
@@ -766,7 +767,7 @@ def pipeline_kanban():
                 WHERE ol.control_number = l.control_number) AS _last_activity
         FROM leads l
         WHERE l.priority != 'SKIP'
-        ORDER BY l.fit_score DESC
+        ORDER BY (l.fit_score * 1.0 / MAX(1, CAST(julianday('now') - julianday(l.formation_date) AS INTEGER))) DESC
         """
     ).fetchall()
     conn.close()
