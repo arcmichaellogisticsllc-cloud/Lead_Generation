@@ -16,6 +16,7 @@ FRESH_LLC = {
     "organizer_name": "John Smith",
     "registered_agent_is_service": False,
     "naics_code": "238220",
+    "filer_phone": "(770) 555-0123",
 }
 TIER1_NAICS = {"tier": 1, "match_source": "naics", "industry_category": "Plumbing"}
 NO_WEBSITE = {"has_website": False, "has_online_payment": False, "detected_payment_processor": None, "detected_vertical_saas": None, "invoice_workflow_signals": None}
