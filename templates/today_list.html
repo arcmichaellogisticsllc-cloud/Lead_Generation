@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Today's Call List — GA Leads{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4 no-print">
+  <div>
+    <h4 class="fw-bold mb-0">Today's Call List</h4>
+    <p class="text-muted small mb-0">
+      {{ today }} &nbsp;·&nbsp; {{ tasks|length }} task{{ 's' if tasks|length != 1 else '' }}
+    </p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/" class="btn btn-sm btn-outline-secondary">← Dashboard</a>
+    <button onclick="window.print()" class="btn btn-sm btn-dark">🖨 Print</button>
+  </div>
+</div>
+
+{% if tasks %}
+<div class="vstack gap-2">
+  {% for task in tasks %}
+  <div class="card task-card p-3">
+    <div class="d-flex gap-3 align-items-start">
+
+      <!-- Index -->
+      <div class="fw-bold text-muted pt-1" style="min-width:22px;font-size:1rem">{{ loop.index }}</div>
+
+      <div class="flex-grow-1">
+        <!-- Header row -->
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-1 mb-1">
+          <div>
+            <span class="badge badge-{{ task.priority }} text-white me-1">{{ task.priority }}</span>
+            <strong>{{ task.entity_name }}</strong>
+            <span class="text-muted small ms-1">{{ task.industry_category or '' }}</span>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="text-muted small">Day {{ task.cadence_day }}</span>
+            <span class="badge bg-light text-dark">
+              {% if task.task_type == 'call' %}📞 Call
+              {% elif task.task_type == 'vm' %}📱 VM
+              {% elif task.task_type == 'email' %}✉️ Email
+              {% elif task.task_type == 'message' %}💬 Text
+              {% else %}{{ task.label }}{% endif %}
+            </span>
+          </div>
+        </div>
+
+        <!-- Phone -->
+        {% if task._phone %}
+        <div class="mb-1">
+          <a href="tel:{{ task._phone }}" class="fw-semibold text-dark text-decoration-none">
+            📞 {{ task._phone }}
+          </a>
+        </div>
+        {% else %}
+        <div class="text-muted small mb-1">No phone on file</div>
+        {% endif %}
+
+        <!-- Organizer -->
+        {% if task.organizer_name %}
+        <div class="text-muted small mb-1">{{ task.organizer_name }}</div>
+        {% endif %}
+
+        <!-- Opening -->
+        {% if task.task_type in ('call', 'vm') %}
+        <div class="text-muted small fst-italic">
+          "{{ task._pain_point }}?"
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <div style="font-size:3rem">✅</div>
+  <h5 class="mt-3">Nothing due today</h5>
+  <a href="/" class="btn btn-dark mt-2">← Dashboard</a>
+</div>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<style>
+@media print {
+  .navbar, .no-print { display: none !important; }
+  .card { box-shadow: none !important; border: 1px solid #dee2e6 !important; break-inside: avoid; }
+  body  { font-size: 11pt; background: white; }
+  a     { color: #000 !important; text-decoration: none !important; }
+}
+</style>
+{% endblock %}

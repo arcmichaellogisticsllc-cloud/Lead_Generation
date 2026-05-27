@@ -380,38 +380,62 @@
       </div>
     </div>
 
-    <!-- Activity log -->
+    <!-- Activity timeline -->
     <div class="card task-card">
       <div class="card-body">
-        <h6 class="fw-bold mb-3">Activity Log</h6>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="fw-bold mb-0">Activity Timeline</h6>
+          <button type="button" class="note-toggle btn btn-sm btn-outline-secondary"
+                  data-target="timeline-note-form" style="font-size:.75rem">📝 Add Note</button>
+        </div>
+
+        <!-- Inline note form -->
+        <div class="d-none mb-3" id="timeline-note-form">
+          <form method="POST" action="/leads/{{ lead.control_number }}/note"
+                class="d-flex gap-2">
+            <textarea name="note" class="form-control form-control-sm" rows="2"
+                      placeholder="Log a call outcome, next step, or anything relevant…"
+                      style="font-size:.85rem"></textarea>
+            <button type="submit" class="btn btn-dark btn-sm flex-shrink-0">Save</button>
+          </form>
+        </div>
+
         {% if log %}
         <div class="vstack gap-2">
           {% for entry in log %}
-          <div class="d-flex gap-2 align-items-start small">
-            <span class="text-muted" style="min-width:130px">
-              {{ entry.logged_at[:16] if entry.logged_at else '' }}
-            </span>
-            <span class="step-{{ entry.task_type }}">
+          <div class="d-flex gap-2 align-items-start small border-start border-2 ps-3"
+               style="border-color:#dee2e6 !important">
+            <div style="min-width:20px;text-align:center">
               {% if entry.task_type == 'call' %}📞
               {% elif entry.task_type == 'email' %}✉️
               {% elif entry.task_type == 'vm' %}📱
+              {% elif entry.task_type == 'message' %}💬
               {% elif entry.task_type == 'outcome' %}🏁
+              {% elif entry.task_type == 'note' %}📝
               {% else %}📋{% endif %}
-            </span>
-            <div>
-              <span class="fw-semibold">{{ entry.task_type|title }}</span>
-              {% if entry.outcome %}
-              <span class="badge bg-light text-dark ms-1">{{ entry.outcome }}</span>
-              {% endif %}
+            </div>
+            <div class="flex-grow-1">
+              <div class="d-flex justify-content-between align-items-start">
+                <span class="fw-semibold">
+                  {% if entry.task_type == 'note' %}Note
+                  {% else %}{{ entry.task_type | title }}{% endif %}
+                  {% if entry.outcome and entry.outcome not in ('note',) %}
+                  <span class="badge bg-light text-dark ms-1 fw-normal">{{ entry.outcome | replace('_',' ') }}</span>
+                  {% endif %}
+                </span>
+                <span class="text-muted ms-2" style="font-size:.72rem;white-space:nowrap">
+                  {{ entry.logged_at[:16] if entry.logged_at else '' }}
+                </span>
+              </div>
               {% if entry.notes %}
-              <div class="text-muted">{{ entry.notes }}</div>
+              <div class="text-muted mt-1" style="font-size:.82rem">{{ entry.notes }}</div>
               {% endif %}
             </div>
           </div>
           {% endfor %}
         </div>
         {% else %}
-        <p class="text-muted small mb-0">No activity yet.</p>
+        <p class="text-muted small mb-0">No activity yet. Start the cadence or add a note above.</p>
         {% endif %}
       </div>
     </div>
@@ -511,6 +535,17 @@ document.querySelectorAll('.copy-btn').forEach(btn => {
       btn.textContent = '✓ Copied';
       setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy'; }, 1500);
     });
+  });
+});
+
+document.querySelectorAll('.note-toggle').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const div = document.getElementById(btn.dataset.target);
+    div.classList.toggle('d-none');
+    if (!div.classList.contains('d-none')) {
+      const ta = div.querySelector('textarea');
+      if (ta) ta.focus();
+    }
   });
 });
 </script>

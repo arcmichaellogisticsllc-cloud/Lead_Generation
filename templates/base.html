@@ -52,6 +52,7 @@
       <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/">Dashboard</a>
       <a class="nav-link {% if request.path in ('/leads','/pipeline') or (request.path.startswith('/leads/') and '/leads' in request.path) %}active{% endif %}" href="/pipeline">Pipeline</a>
       <a class="nav-link {% if '/templates' in request.path %}active{% endif %}" href="/templates">Templates</a>
+      <a class="nav-link {% if '/analytics' in request.path %}active{% endif %}" href="/analytics">Analytics</a>
       <a class="nav-link {% if '/runs' in request.path %}active{% endif %}" href="/runs">Runs</a>
     </div>
 

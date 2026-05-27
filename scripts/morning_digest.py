@@ -19,7 +19,7 @@ from pathlib import Path
 PROJECT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT))
 
-STALE_DAYS = 3   # days without activity before a lead is flagged
+STALE_DAYS = 5   # days without activity before escalation alert fires
 
 
 def main() -> None:
@@ -71,7 +71,7 @@ def main() -> None:
         (stale_cutoff,),
     ).fetchall()
 
-    for row in stale_rows:
+    for i, row in enumerate(stale_rows):
         last = row["last_activity"]
         if last:
             days_ago = (date.today() - datetime.fromisoformat(last[:10]).date()).days
@@ -84,6 +84,9 @@ def main() -> None:
             link=f"/leads/{row['control_number']}",
             ntype="stale_lead",
         )
+        # Per-lead macOS push for the 3 most overdue (ordered oldest-first)
+        if i < 3:
+            _mac_notify(f"Stale Lead — {row['entity_name']}", body)
 
     conn.close()
 
@@ -118,7 +121,7 @@ def _mac_notify(title: str, message: str) -> None:
         safe_message = message.replace('"', "'").replace("\\", "")
         script = (
             f'display notification "{safe_message}" with title "{safe_title}" '
-            f'sound name "default"'
+            f'sound name "Glass"'
         )
         subprocess.run(["osascript", "-e", script], check=False, timeout=5)
     except Exception:

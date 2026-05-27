@@ -16,6 +16,7 @@ from pathlib import Path
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
 sys.path.insert(0, str(Path(__file__).parent))
+from src.cadence import CADENCE, CALL_OUTCOMES, EMAIL_OUTCOMES, FINAL_OUTCOMES
 from src.db import DB_PATH, get_connection, init_db
 from src.notifications import get_unread, mark_all_read, unread_count
 
@@ -32,27 +33,7 @@ def inject_notifications():
         count, notifs = 0, []
     return {"notif_count": count, "notif_items": notifs}
 
-# ---------------------------------------------------------------------------
-# Cadence definition — 12 touches over 12 days
-# ---------------------------------------------------------------------------
-CADENCE = [
-    {"step": 1,  "day": 1,  "type": "call",    "label": "Call"},
-    {"step": 2,  "day": 1,  "type": "vm",      "label": "Leave Voicemail"},
-    {"step": 3,  "day": 1,  "type": "email",   "label": "Send Intro Email"},
-    {"step": 4,  "day": 3,  "type": "call",    "label": "Call"},
-    {"step": 5,  "day": 3,  "type": "message", "label": "Short Connect Message"},
-    {"step": 6,  "day": 3,  "type": "log",     "label": "Log Day 3 Outcome"},
-    {"step": 7,  "day": 6,  "type": "call",    "label": "Call"},
-    {"step": 8,  "day": 6,  "type": "email",   "label": "Bump Email"},
-    {"step": 9,  "day": 9,  "type": "call",    "label": "Call"},
-    {"step": 10, "day": 9,  "type": "email",   "label": "Reference Email"},
-    {"step": 11, "day": 12, "type": "call",    "label": "Final Call"},
-    {"step": 12, "day": 12, "type": "email",   "label": "Close Loop Email"},
-]
-
-CALL_OUTCOMES = ["connected", "no_answer", "vm_left", "wrong_number", "callback_scheduled"]
-EMAIL_OUTCOMES = ["sent", "replied", "bounced", "opened"]
-FINAL_OUTCOMES = ["converted", "nurture_90", "dead", "no_contact"]
+# CADENCE, CALL_OUTCOMES, EMAIL_OUTCOMES, FINAL_OUTCOMES imported from src.cadence above
 
 # ---------------------------------------------------------------------------
 # Default email templates
@@ -116,8 +97,10 @@ Reach out whenever it's the right time.
     },
 }
 
-SENDER_EMAIL = "mmcgee@ippayware.com"
-SENDER_PHONE = os.environ.get("SENDER_PHONE", "")
+SENDER_EMAIL   = os.environ.get("SENDER_EMAIL",   "mmcgee@ippayware.com")
+SENDER_NAME    = os.environ.get("SENDER_NAME",    "Marcus McGee")
+SENDER_PHONE   = os.environ.get("SENDER_PHONE",   "")
+SENDER_COMPANY = os.environ.get("SENDER_COMPANY", "IPPayware")
 
 # ---------------------------------------------------------------------------
 # Processor / SaaS — specific acknowledgment copy for the bump email.
@@ -341,7 +324,9 @@ def _render_template_body(body: str, lead: dict, log_history: list[dict] | None 
         .replace("{{stack_hook}}",      stack_hook)
         .replace("{{review_detail}}",   review_detail)
         .replace("{{sender_email}}",    SENDER_EMAIL)
+        .replace("{{sender_name}}",     SENDER_NAME)
         .replace("{{sender_phone}}",    SENDER_PHONE)
+        .replace("{{sender_company}}",  SENDER_COMPANY)
     )
 
 
@@ -717,6 +702,138 @@ def set_outcome(cn: str):
 
 
 # ---------------------------------------------------------------------------
+# Routes — Batch lead actions (kanban multi-select)
+# ---------------------------------------------------------------------------
+
+@app.route("/leads/batch", methods=["POST"])
+def batch_leads():
+    raw    = request.form.get("control_numbers", "")
+    action = request.form.get("action", "")
+    if action not in ("close", "skip", "start_cadence"):
+        return "Invalid action", 400
+
+    cns = [
+        cn.strip() for cn in raw.split(",")
+        if re.match(r'^[A-Za-z0-9_\-]{1,40}$', cn.strip())
+    ]
+    if not cns:
+        return redirect(url_for("pipeline_kanban"))
+
+    conn  = db()
+    today = date.today()
+
+    if action == "close":
+        for cn in cns:
+            conn.execute(
+                "UPDATE cadence_tasks SET status='skipped' WHERE control_number=? AND status='pending'",
+                (cn,),
+            )
+            conn.execute(
+                "UPDATE leads SET outreach_status='DEAD', last_updated=CURRENT_TIMESTAMP WHERE control_number=?",
+                (cn,),
+            )
+            conn.execute(
+                "INSERT INTO outreach_log (control_number, task_type, outcome, notes) VALUES (?, 'outcome', 'dead', 'Batch closed')",
+                (cn,),
+            )
+    elif action == "skip":
+        for cn in cns:
+            conn.execute(
+                "UPDATE leads SET priority='SKIP', last_updated=CURRENT_TIMESTAMP WHERE control_number=?",
+                (cn,),
+            )
+    elif action == "start_cadence":
+        for cn in cns:
+            has_tasks = conn.execute(
+                "SELECT COUNT(*) FROM cadence_tasks WHERE control_number=?", (cn,)
+            ).fetchone()[0]
+            if has_tasks:
+                continue
+            for touch in CADENCE:
+                due = today + timedelta(days=touch["day"] - 1)
+                conn.execute(
+                    """INSERT INTO cadence_tasks
+                       (control_number, step, cadence_day, task_type, label, due_date)
+                       VALUES (?,?,?,?,?,?)""",
+                    (cn, touch["step"], touch["day"], touch["type"], touch["label"], str(due)),
+                )
+            conn.execute(
+                """UPDATE leads SET outreach_status='IN_CADENCE', cadence_start_date=?,
+                   cadence_step=1, last_updated=CURRENT_TIMESTAMP WHERE control_number=?""",
+                (str(today), cn),
+            )
+
+    conn.commit()
+    conn.close()
+    return redirect(url_for("pipeline_kanban"))
+
+
+# ---------------------------------------------------------------------------
+# Routes — Quick notes from dashboard
+# ---------------------------------------------------------------------------
+
+@app.route("/leads/<cn>/note", methods=["POST"])
+def add_note(cn: str):
+    note = request.form.get("note", "").strip()
+    if note:
+        conn = db()
+        conn.execute(
+            """INSERT INTO outreach_log (control_number, task_type, outcome, notes)
+               VALUES (?, 'note', 'note', ?)""",
+            (cn, note),
+        )
+        conn.execute(
+            "UPDATE leads SET last_updated=CURRENT_TIMESTAMP WHERE control_number=?",
+            (cn,),
+        )
+        conn.commit()
+        conn.close()
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": True})
+    return redirect(request.referrer or url_for("dashboard"))
+
+
+@app.route("/leads/<cn>/reschedule_task", methods=["POST"])
+def reschedule_task(cn: str):
+    raw_task_id = request.form.get("task_id", "").strip()
+    new_date    = request.form.get("due_date", "").strip()
+    if not raw_task_id.isdigit():
+        return "Invalid task_id", 400
+    try:
+        datetime.strptime(new_date, "%Y-%m-%d")
+    except ValueError:
+        return "Invalid date", 400
+    task_id = int(raw_task_id)
+    conn = db()
+    conn.execute(
+        "UPDATE cadence_tasks SET due_date=? WHERE id=? AND control_number=? AND status='pending'",
+        (new_date, task_id, cn),
+    )
+    conn.commit()
+    conn.close()
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": True})
+    return redirect(request.referrer or url_for("dashboard"))
+
+
+@app.route("/today/list")
+def today_list():
+    conn = db()
+    tasks = _today_tasks(conn)
+    conn.close()
+    for task in tasks:
+        ikey = _industry_key(task.get("industry_category") or "")
+        task["_pain_point"] = INDUSTRY_PAIN_POINTS.get(ikey, INDUSTRY_PAIN_POINTS["default"])
+        task["_phone"]      = task.get("filer_phone") or task.get("business_phone") or ""
+        task["_first"]      = (task.get("organizer_name") or "there").split()[0].title()
+    return render_template(
+        "today_list.html",
+        tasks=tasks,
+        today=date.today().strftime("%A, %B %d"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Routes — Templates
 # ---------------------------------------------------------------------------
 
@@ -923,6 +1040,123 @@ def pipeline_kanban():
 
 
 # ---------------------------------------------------------------------------
+# Routes — Analytics
+# ---------------------------------------------------------------------------
+
+@app.route("/analytics")
+def analytics():
+    conn = db()
+
+    totals = conn.execute(
+        """SELECT COUNT(*) as total,
+              COALESCE(SUM(CASE WHEN outreach_status='CONVERTED'              THEN 1 ELSE 0 END), 0) as converted,
+              COALESCE(SUM(CASE WHEN outreach_status IN ('DEAD','NO_CONTACT') THEN 1 ELSE 0 END), 0) as dead,
+              COALESCE(SUM(CASE WHEN outreach_status='IN_CADENCE'             THEN 1 ELSE 0 END), 0) as in_cadence,
+              COALESCE(SUM(CASE WHEN priority='HOT'  THEN 1 ELSE 0 END), 0) as hot,
+              COALESCE(SUM(CASE WHEN priority='WARM' THEN 1 ELSE 0 END), 0) as warm
+           FROM leads WHERE priority != 'SKIP'"""
+    ).fetchone()
+
+    industry_pipeline = conn.execute(
+        """SELECT industry_category, priority, COUNT(*) as n
+           FROM leads
+           WHERE priority NOT IN ('SKIP') AND industry_category IS NOT NULL
+           GROUP BY industry_category, priority"""
+    ).fetchall()
+
+    industry_outcomes = conn.execute(
+        """SELECT industry_category, outreach_status, COUNT(*) as n
+           FROM leads
+           WHERE outreach_status IN ('CONVERTED','DEAD','NO_CONTACT','NURTURE')
+             AND industry_category IS NOT NULL
+           GROUP BY industry_category, outreach_status"""
+    ).fetchall()
+
+    priority_outcomes = conn.execute(
+        """SELECT priority, outreach_status, COUNT(*) as n
+           FROM leads
+           WHERE outreach_status IN ('CONVERTED','DEAD','NO_CONTACT')
+             AND priority IN ('HOT','WARM','COLD')
+           GROUP BY priority, outreach_status"""
+    ).fetchall()
+
+    dropoff = conn.execute(
+        """SELECT cadence_step, COUNT(*) as n
+           FROM leads
+           WHERE outreach_status IN ('DEAD','NO_CONTACT')
+             AND cadence_step IS NOT NULL AND cadence_step > 0
+           GROUP BY cadence_step ORDER BY cadence_step"""
+    ).fetchall()
+
+    weekly = conn.execute(
+        """SELECT strftime('%Y-%m-%d', first_seen, 'weekday 1', '-6 days') as week_start,
+                  COUNT(*) as n,
+                  SUM(CASE WHEN priority='HOT'  THEN 1 ELSE 0 END) as hot,
+                  SUM(CASE WHEN priority='WARM' THEN 1 ELSE 0 END) as warm
+           FROM leads
+           WHERE priority != 'SKIP' AND first_seen IS NOT NULL
+           GROUP BY week_start ORDER BY week_start DESC LIMIT 8"""
+    ).fetchall()
+
+    avg_row = conn.execute(
+        """SELECT AVG(touch_count) as avg FROM (
+             SELECT ol.control_number, COUNT(*) as touch_count
+             FROM outreach_log ol
+             JOIN leads l ON ol.control_number = l.control_number
+             WHERE l.outreach_status='CONVERTED'
+               AND ol.task_type NOT IN ('outcome','note')
+             GROUP BY ol.control_number
+           )"""
+    ).fetchone()
+
+    conn.close()
+
+    # Build industry table
+    industry_data: dict = {}
+    for row in industry_pipeline:
+        cat = row["industry_category"] or "Unknown"
+        industry_data.setdefault(cat, {"HOT": 0, "WARM": 0, "COLD": 0, "converted": 0, "dead": 0})
+        industry_data[cat][row["priority"]] = row["n"]
+    for row in industry_outcomes:
+        cat = row["industry_category"] or "Unknown"
+        industry_data.setdefault(cat, {"HOT": 0, "WARM": 0, "COLD": 0, "converted": 0, "dead": 0})
+        s = row["outreach_status"]
+        if s in ("DEAD", "NO_CONTACT"):
+            industry_data[cat]["dead"] += row["n"]
+        elif s == "CONVERTED":
+            industry_data[cat]["converted"] += row["n"]
+
+    industry_list = []
+    for cat, d in industry_data.items():
+        closed = d["converted"] + d["dead"]
+        industry_list.append({
+            "category": cat,
+            **d,
+            "total_active": d["HOT"] + d["WARM"] + d["COLD"],
+            "rate": round(d["converted"] / closed * 100) if closed else None,
+        })
+    industry_list.sort(key=lambda x: (x["converted"] * 10 + x["HOT"]), reverse=True)
+
+    # Priority accuracy
+    accuracy: dict = {}
+    for row in priority_outcomes:
+        p = row["priority"]
+        s = row["outreach_status"]
+        accuracy.setdefault(p, {"CONVERTED": 0, "DEAD": 0, "NO_CONTACT": 0})
+        accuracy[p][s] = row["n"]
+
+    return render_template(
+        "analytics.html",
+        totals=dict(totals),
+        industry_list=industry_list,
+        accuracy=accuracy,
+        dropoff=[dict(r) for r in dropoff],
+        weekly=[dict(r) for r in weekly],
+        avg_touches=round(avg_row["avg"], 1) if avg_row and avg_row["avg"] else None,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Routes — Notifications
 # ---------------------------------------------------------------------------
 
@@ -972,4 +1206,5 @@ if __name__ == "__main__":
     conn.close()
     print("\n  GA Payment Leads — Sales Pipeline")
     print("  Open: http://localhost:5000\n")
-    app.run(debug=os.environ.get("FLASK_DEBUG", "0") == "1", port=5000)
+    port = int(os.environ.get("PORT", "5001"))
+    app.run(debug=os.environ.get("FLASK_DEBUG", "0") == "1", port=port)

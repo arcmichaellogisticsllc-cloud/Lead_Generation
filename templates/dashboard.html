@@ -8,6 +8,7 @@
     <h2 class="fw-bold mb-0">Today's Work</h2>
   </div>
   <div class="col-auto d-flex gap-2 align-items-center">
+    <a href="/today/list" class="btn btn-outline-secondary btn-sm">📋 Call List</a>
     <a href="/leads" class="btn btn-outline-secondary btn-sm">View Pipeline</a>
     <a href="/leads?status=active" class="btn btn-dark btn-sm">+ Start New Lead</a>
   </div>
@@ -145,6 +146,80 @@
           ✓ Done
         </button>
       </div>
+
+      <!-- One-tap common outcomes -->
+      {% if task.task_type in ('call', 'vm') %}
+      <div class="d-flex gap-1 mt-2 flex-wrap">
+        <form method="POST" action="/leads/{{ task.control_number }}/complete_task" class="d-inline">
+          <input type="hidden" name="task_id" value="{{ task.id }}">
+          <input type="hidden" name="outcome" value="no_answer">
+          <button type="submit" class="btn btn-sm btn-outline-secondary"
+                  style="font-size:.72rem;padding:2px 8px">No Answer</button>
+        </form>
+        <form method="POST" action="/leads/{{ task.control_number }}/complete_task" class="d-inline">
+          <input type="hidden" name="task_id" value="{{ task.id }}">
+          <input type="hidden" name="outcome" value="vm_left">
+          <button type="submit" class="btn btn-sm btn-outline-secondary"
+                  style="font-size:.72rem;padding:2px 8px">VM Left</button>
+        </form>
+        <form method="POST" action="/leads/{{ task.control_number }}/complete_task" class="d-inline">
+          <input type="hidden" name="task_id" value="{{ task.id }}">
+          <input type="hidden" name="outcome" value="connected">
+          <button type="submit" class="btn btn-sm btn-outline-success"
+                  style="font-size:.72rem;padding:2px 8px">Connected ✓</button>
+        </form>
+      </div>
+      {% elif task.task_type == 'email' %}
+      <div class="mt-2">
+        <form method="POST" action="/leads/{{ task.control_number }}/complete_task" class="d-inline">
+          <input type="hidden" name="task_id" value="{{ task.id }}">
+          <input type="hidden" name="outcome" value="sent">
+          <button type="submit" class="btn btn-sm btn-outline-secondary"
+                  style="font-size:.72rem;padding:2px 8px">✓ Mark Sent</button>
+        </form>
+      </div>
+      {% elif task.task_type == 'message' %}
+      <div class="mt-2">
+        <form method="POST" action="/leads/{{ task.control_number }}/complete_task" class="d-inline">
+          <input type="hidden" name="task_id" value="{{ task.id }}">
+          <input type="hidden" name="outcome" value="done">
+          <button type="submit" class="btn btn-sm btn-outline-secondary"
+                  style="font-size:.72rem;padding:2px 8px">✓ Mark Sent</button>
+        </form>
+      </div>
+      {% endif %}
+
+      <!-- Reschedule toggle -->
+      <div class="mt-1">
+        <button type="button" class="reschedule-toggle p-0 text-muted"
+                style="font-size:.72rem;border:none;background:none"
+                data-target="reschedule-{{ task.id }}">📅 Reschedule</button>
+        <div class="d-none mt-1" id="reschedule-{{ task.id }}">
+          <form method="POST" action="/leads/{{ task.control_number }}/reschedule_task"
+                class="d-flex gap-1">
+            <input type="hidden" name="task_id" value="{{ task.id }}">
+            <input type="date" name="due_date" class="form-control form-control-sm"
+                   value="{{ task.due_date }}" style="font-size:.8rem">
+            <button type="submit" class="btn btn-sm btn-dark flex-shrink-0">Save</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Inline quick note -->
+      <div class="mt-2">
+        <button type="button" class="note-toggle p-0 text-muted"
+                style="font-size:.75rem;border:none;background:none"
+                data-target="note-{{ task.id }}">📝 Add note</button>
+        <div class="d-none mt-1" id="note-{{ task.id }}">
+          <form method="POST" action="/leads/{{ task.control_number }}/note"
+                class="d-flex gap-1">
+            <textarea name="note" class="form-control form-control-sm" rows="1"
+                      placeholder="Quick note…" style="resize:none;font-size:.8rem"></textarea>
+            <button type="submit" class="btn btn-sm btn-dark flex-shrink-0">Save</button>
+          </form>
+        </div>
+      </div>
+
     </div>
   </div>
   {% endfor %}
@@ -209,6 +284,20 @@ document.querySelectorAll('.complete-btn').forEach(btn => {
        </div>`
     ).join('');
     new bootstrap.Modal(document.getElementById('completeModal')).show();
+  });
+});
+
+document.querySelectorAll('.note-toggle').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const div = document.getElementById(btn.dataset.target);
+    div.classList.toggle('d-none');
+    if (!div.classList.contains('d-none')) div.querySelector('textarea').focus();
+  });
+});
+
+document.querySelectorAll('.reschedule-toggle').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.getElementById(btn.dataset.target).classList.toggle('d-none');
   });
 });
 </script>

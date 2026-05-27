@@ -54,21 +54,7 @@ logger = logging.getLogger(__name__)
 # IDs to scan per daily run (~8–12 min at 1.5 s/ID)
 DAILY_SCAN = int(os.environ.get("DISCOVER_SCAN", "300"))
 
-# Cadence definition — must stay in sync with app.py
-_CADENCE = [
-    {"step": 1,  "day": 1,  "type": "call",    "label": "Call"},
-    {"step": 2,  "day": 1,  "type": "vm",      "label": "Leave Voicemail"},
-    {"step": 3,  "day": 1,  "type": "email",   "label": "Send Intro Email"},
-    {"step": 4,  "day": 3,  "type": "call",    "label": "Call"},
-    {"step": 5,  "day": 3,  "type": "message", "label": "Short Connect Message"},
-    {"step": 6,  "day": 3,  "type": "log",     "label": "Log Day 3 Outcome"},
-    {"step": 7,  "day": 6,  "type": "call",    "label": "Call"},
-    {"step": 8,  "day": 6,  "type": "email",   "label": "Bump Email"},
-    {"step": 9,  "day": 9,  "type": "call",    "label": "Call"},
-    {"step": 10, "day": 9,  "type": "email",   "label": "Reference Email"},
-    {"step": 11, "day": 12, "type": "call",    "label": "Final Call"},
-    {"step": 12, "day": 12, "type": "email",   "label": "Close Loop Email"},
-]
+from src.cadence import CADENCE as _CADENCE  # noqa: E402
 
 
 def _parse_args() -> argparse.Namespace:
@@ -506,7 +492,7 @@ def _mac_notify(title: str, message: str) -> None:
         safe_message = message.replace('"', "'").replace("\\", "")
         script = (
             f'display notification "{safe_message}" with title "{safe_title}" '
-            f'sound name "default"'
+            f'sound name "Glass"'
         )
         subprocess.run(["osascript", "-e", script], check=False, timeout=5)
     except Exception:
