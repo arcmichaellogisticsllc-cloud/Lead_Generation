@@ -4,11 +4,14 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.pytest_cache/
 data/raw/
 data/processed/
-data/leads.db
 data/exports/
-data/pipeline.log
+data/leads.db*
+data/*.log
+data/debug/
+config/*.bak.yaml
 state.json
 .DS_Store
 *.pdf
