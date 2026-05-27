@@ -1,10 +1,10 @@
 # GA Payment-Operations Lead Pipeline
 
-Discovers newly formed Georgia business entities, filters by target industry, extracts contact information from filing documents, enriches with website and payment-stack data, and exports a prioritized lead list.
+Discovers newly formed Georgia LLCs from the Secretary of State's eCorp portal, scores them for payment-ops fit, and manages outreach via a 12-touch cadence dashboard.
 
 ## Purpose
 
-New LLCs filing in Georgia show up in the Secretary of State's eCorp portal. Most owner-operators have no online payment system, no booking tool, and no CRM — exactly the moment a payment-ops sales pitch lands best. This pipeline finds them within days of filing and scores them for fit.
+New LLCs filing in Georgia appear in the eCorp portal within days of formation. Most owner-operators have no payment system, no booking tool, and no CRM — the ideal moment for a payment-ops pitch. This pipeline finds them, scores them, and tracks outreach from first call through close.
 
 ## Target Industries
 
@@ -17,39 +17,56 @@ New LLCs filing in Georgia show up in the Secretary of State's eCorp portal. Mos
 ## Setup
 
 ```bash
-# 1. Create and activate virtual environment
-python3.11 -m venv .venv
+# 1. Clone and create virtual environment
+python3 -m venv .venv
 source .venv/bin/activate
 
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Install Playwright browser
+# 3. Install Playwright browser (used for eCorp scraping)
 playwright install chromium
 
 # 4. Initialize the database
 python -m src.db
 
-# 5. Copy environment file
+# 5. Configure environment
 cp .env.example .env
+# Edit .env — at minimum set FLASK_SECRET_KEY
 ```
 
-## Pipeline Stages
-
-Run individual stages or the full pipeline:
+## Running the Dashboard
 
 ```bash
-# Full pipeline (last 1 day)
-python -m src.pipeline run-all --days 1
-
-# Individual stages
-python -m src.pipeline discover --days 7
-python -m src.pipeline scrape
-python -m src.pipeline extract
-python -m src.pipeline score
-python -m src.pipeline enrich
-python -m src.pipeline export --priority HOT
+python app.py
+# Opens at http://localhost:5001
 ```
+
+| Route | Purpose |
+|-------|---------|
+| `/` | Today's tasks — calls, emails, voicemails due |
+| `/pipeline` | Kanban board — all active leads by stage |
+| `/leads` | Table view with filters |
+| `/leads/<id>` | Lead detail — cadence timeline, email drafts, enrichment |
+| `/templates` | Edit the 12-step outreach templates |
+| `/analytics` | Win rate, drop-off by cadence step, industry breakdown |
+| `/today/list` | Printable numbered call list |
+| `/runs` | Pipeline run history and notifications |
+
+## Automated Scheduling (macOS)
+
+Install four launchd jobs with:
+
+```bash
+python scripts/install_scheduler.py
+```
+
+| Job | Schedule | What it does |
+|-----|----------|--------------|
+| Daily full pipeline | 7:00 AM | Discover → score → enrich → notify |
+| Quick scan | 1:00 PM | Lighter discovery pass |
+| Morning digest | 7:30 AM | macOS notification summary of today's tasks |
+| Score calibration | Monday 8:00 AM | Auto-tune scoring weights from outcomes |
 
 ## Scoring Model
 
@@ -76,15 +93,26 @@ Each lead receives a fit score 0–100:
 
 **Priority thresholds:** HOT ≥ 80 · WARM ≥ 60 · COLD ≥ 40 · SKIP < 40
 
-## Export CSVs
+Weights live in `config/scoring_weights.yaml` and are auto-tuned weekly by `scripts/scoring_feedback.py`. Run manually with `python scripts/scoring_feedback.py --apply`.
 
-Exports land in `data/exports/`. Each export run produces:
+## Environment Variables
 
-- `hot_leads_YYYY-MM-DD.csv` — Score ≥ 80, immediate outreach
-- `warm_leads_YYYY-MM-DD.csv` — Score 60–79, follow-up queue
-- `cold_leads_YYYY-MM-DD.csv` — Score 40–59, nurture list
+Copy `.env.example` to `.env`. All vars are optional with sensible defaults except `FLASK_SECRET_KEY`.
 
-Key columns: `control_number`, `entity_name`, `formation_date`, `tier`, `fit_score`, `priority`, `filer_email`, `filer_phone`, `website`, `detected_payment_processor`, `principal_office_address`.
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `FLASK_SECRET_KEY` | `changeme` | Session security — set a real value |
+| `FLASK_DEBUG` | `0` | Enable Flask debug mode |
+| `BROWSER_HEADLESS` | `0` | Run Playwright headless (set `1` on servers) |
+| `DISCOVER_SCAN` | `500` | Max entities to scan per pipeline run |
+| `SENDER_NAME` | `Marcus McGee` | Used as `{{sender_name}}` in templates |
+| `SENDER_EMAIL` | `mmcgee@ippayware.com` | Used as `{{sender_email}}` in templates |
+| `SENDER_PHONE` | _(empty)_ | Used as `{{sender_phone}}` in templates |
+| `SENDER_COMPANY` | `IPPayware` | Used as `{{sender_company}}` in templates |
+| `AUTO_CADENCE_HOT` | `0` | Auto-start cadence for HOT leads within 48 h |
+| `ALERT_PHONE` | _(empty)_ | E.164 number for new HOT lead SMS alerts |
+| `TWILIO_SID/TOKEN/FROM` | _(empty)_ | Required for SMS alerts |
+| `GOOGLE_PLACES_API_KEY` | _(empty)_ | Phone/website fallback via Places API |
 
 ## Polite-Scraper Commitment
 
@@ -93,11 +121,7 @@ Key columns: `control_number`, `entity_name`, `formation_date`, `tier`, `fit_sco
 - Real browser user-agent (Playwright Chromium)
 - No scraping outside eCorp and public business websites
 
-## Phase 2 TODOs
+## Pending
 
-- [ ] Google Places API enrichment (`enrichment/google_places.py`)
-- [ ] Georgia professional licensing DB lookup (`enrichment/ga_licensing.py`)
-- [ ] Interactive weight tuning (`scripts/tune_scoring.py`)
-- [ ] Weekly email digest (`scripts/weekly_report.py`)
-- [ ] Deduplication against existing CRM contacts
-# Lead_Generation
+- Georgia professional licensing DB lookup (`enrichment/ga_licensing.py` — stubbed)
+- Deduplication against external CRM contacts
