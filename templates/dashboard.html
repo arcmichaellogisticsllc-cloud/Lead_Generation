@@ -1,304 +1,56 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — GA Leads{% endblock %}
+{% from '_components.html' import btn_primary, btn_secondary, btn_ghost, btn_danger,
+   badge_priority, badge_status, badge_neutral, card, stat, empty_state with context %}
+{% block title %}Today — Pipeline{% endblock %}
 {% block content %}
-
-<div class="row mb-4 g-3">
-  <div class="col">
-    <h5 class="text-muted mb-0">{{ today }}</h5>
-    <h2 class="fw-bold mb-0">Today's Work</h2>
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold mb-1">Today</h1>
+    <p class="text-sm text-stone-500">Foundation test render — full rebuild in next session.</p>
   </div>
-  <div class="col-auto d-flex gap-2 align-items-center">
-    <a href="/today/list" class="btn btn-outline-secondary btn-sm">📋 Call List</a>
-    <a href="/leads" class="btn btn-outline-secondary btn-sm">View Pipeline</a>
-    <a href="/leads?status=active" class="btn btn-dark btn-sm">+ Start New Lead</a>
-  </div>
-</div>
 
-<!-- Stat bar -->
-<div class="row g-3 mb-4">
-  {% for label, val, color in [
-    ("Total Leads", stats.total_leads, "secondary"),
-    ("In Cadence",  stats.in_cadence,  "primary"),
-    ("HOT",         stats.hot,         "danger"),
-    ("WARM",        stats.warm,        "warning"),
-    ("Converted",   stats.converted,   "success"),
-  ] %}
-  <div class="col-6 col-md-auto">
-    <div class="card task-card text-center px-3 py-2" style="min-width:90px">
-      <div class="fw-bold fs-4 text-{{ color }}">{{ val }}</div>
-      <div class="text-muted small">{{ label }}</div>
+  <div class="grid grid-cols-5 gap-4">
+    {{ stat("TOTAL", "42") }}
+    {{ stat("IN CADENCE", "18") }}
+    {{ stat("HOT", "3", accent="danger") }}
+    {{ stat("WARM", "7", accent="warn") }}
+    {{ stat("CONVERTED", "2", accent="success") }}
+  </div>
+
+  {% call card(title="Sample card") %}
+    <div class="flex items-center gap-2 mb-3">
+      {{ badge_priority("HOT") }}
+      {{ badge_priority("WARM") }}
+      {{ badge_priority("COLD") }}
+      {{ badge_priority("SKIP") }}
     </div>
-  </div>
-  {% endfor %}
-</div>
-
-<!-- New leads from today's pipeline run -->
-{% if new_leads %}
-<div class="card task-card mb-4">
-  <div class="card-body">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h6 class="fw-bold mb-0">
-        <span class="badge bg-success me-1">{{ new_leads|length }}</span>
-        New Lead{% if new_leads|length != 1 %}s{% endif %} Today
-      </h6>
-      <span class="text-muted small">Discovered by this morning's pipeline run</span>
+    <p class="text-sm text-stone-600 mb-3">
+      Sample text in Inter. Score <span class="font-mono">87</span> in JetBrains Mono.
+      Control number <span class="font-mono">26012345</span>. Phone
+      <span class="font-mono">(770) 555-0123</span>.
+    </p>
+    <div class="flex gap-2">
+      {{ btn_primary("Primary CTA") }}
+      {{ btn_secondary("Secondary") }}
+      {{ btn_ghost("Ghost") }}
+      {{ btn_danger("Destructive") }}
     </div>
-    <div class="row g-2">
-      {% for lead in new_leads %}
-      <div class="col-12 col-md-6 col-xl-4">
-        <div class="d-flex justify-content-between align-items-start border rounded p-2 bg-light">
-          <div class="me-2" style="min-width:0">
-            <div class="fw-semibold text-truncate">{{ lead.entity_name }}</div>
-            <div class="text-muted small">
-              <span class="badge badge-{{ lead.priority }} text-white me-1">{{ lead.priority }}</span>
-              {{ lead.industry_category or '—' }}
-              · Score {{ lead.fit_score or 0 }}
-            </div>
-            {% if lead.organizer_name %}
-            <div class="text-muted small">{{ lead.organizer_name }}</div>
-            {% endif %}
-          </div>
-          <form method="POST" action="/leads/{{ lead.control_number }}/start" class="flex-shrink-0">
-            <button class="btn btn-sm btn-dark" title="Start 12-step cadence">Start →</button>
-          </form>
-        </div>
-      </div>
-      {% endfor %}
+  {% endcall %}
+
+  {% call card(title="Badge status variants") %}
+    <div class="flex flex-wrap gap-2">
+      {{ badge_status("active") }}
+      {{ badge_status("converted") }}
+      {{ badge_status("dead") }}
+      {{ badge_status("no_contact") }}
+      {{ badge_status("nurture_90") }}
+      {{ badge_neutral("Tier 1") }}
+      {{ badge_neutral("HVAC") }}
     </div>
-  </div>
+  {% endcall %}
+
+  {% call card(title="Empty state") %}
+    {{ empty_state("inbox", "Nothing due today", "Start a cadence on a new lead to generate tasks.") }}
+  {% endcall %}
 </div>
-{% endif %}
-
-<!-- Overdue -->
-{% if overdue %}
-<div class="alert alert-danger py-2 mb-3">
-  <i class="bi bi-exclamation-triangle-fill me-1"></i>
-  <strong>{{ overdue|length }} overdue task{% if overdue|length != 1 %}s{% endif %}</strong> —
-  touches that should have happened before today
-</div>
-{% endif %}
-
-<!-- Task list -->
-{% set all_tasks = overdue + due_today %}
-{% if all_tasks %}
-<div class="row g-3">
-  {% for task in all_tasks %}
-  <div class="col-12 col-lg-6">
-    <div class="card task-card p-3
-      {% if task.due_date < today %}border-danger{% endif %}">
-      <div class="d-flex justify-content-between align-items-start mb-2">
-        <div>
-          <span class="badge badge-{{ task.priority }} text-white me-1">{{ task.priority }}</span>
-          <strong>{{ task.entity_name }}</strong>
-          <span class="text-muted ms-1 small">{{ task.industry_category or '' }}</span>
-        </div>
-        <span class="badge bg-secondary">Day {{ task.cadence_day }}</span>
-      </div>
-
-      <div class="mb-2">
-        <span class="step-{{ task.task_type }} me-1">
-          {% if task.task_type == 'call' %}📞
-          {% elif task.task_type == 'email' %}✉️
-          {% elif task.task_type == 'vm' %}📱
-          {% elif task.task_type == 'message' %}💬
-          {% else %}📋{% endif %}
-        </span>
-        <span class="step-pending">{{ task.label }}</span>
-        {% if task.organizer_name %}
-        <span class="text-muted ms-2 small">{{ task.organizer_name }}</span>
-        {% endif %}
-      </div>
-
-      {% set phone = task.filer_phone or task.business_phone %}
-      {% if phone %}
-      <div class="text-muted small mb-2">
-        <i class="bi bi-telephone me-1"></i>
-        <a href="tel:{{ phone }}" class="text-muted">{{ phone }}</a>
-      </div>
-      {% endif %}
-
-      <div class="d-flex gap-2 flex-wrap mt-1">
-        {% if task.task_type in ('call', 'vm') and phone %}
-        <a href="tel:{{ phone }}" class="btn btn-sm btn-outline-success">
-          📞 Dial
-        </a>
-        {% elif task.task_type == 'message' and phone %}
-        <a href="sms:{{ phone }}" class="btn btn-sm btn-outline-info">
-          💬 Text
-        </a>
-        {% elif task.task_type == 'email' and task.filer_email %}
-        <a href="/leads/{{ task.control_number }}#email-{{ task.step }}"
-           class="btn btn-sm btn-outline-dark">
-          ✉️ Email
-        </a>
-        {% else %}
-        <a href="/leads/{{ task.control_number }}" class="btn btn-sm btn-outline-primary">
-          Open Lead
-        </a>
-        {% endif %}
-        <a href="/leads/{{ task.control_number }}" class="btn btn-sm btn-outline-secondary">
-          View
-        </a>
-        <button class="btn btn-sm btn-success complete-btn"
-                data-task-id="{{ task.id }}"
-                data-cn="{{ task.control_number }}"
-                data-type="{{ task.task_type }}">
-          ✓ Done
-        </button>
-      </div>
-
-      <!-- One-tap common outcomes -->
-      {% if task.task_type in ('call', 'vm') %}
-      <div class="d-flex gap-1 mt-2 flex-wrap">
-        <form method="POST" action="/leads/{{ task.control_number }}/complete_task" class="d-inline">
-          <input type="hidden" name="task_id" value="{{ task.id }}">
-          <input type="hidden" name="outcome" value="no_answer">
-          <button type="submit" class="btn btn-sm btn-outline-secondary"
-                  style="font-size:.72rem;padding:2px 8px">No Answer</button>
-        </form>
-        <form method="POST" action="/leads/{{ task.control_number }}/complete_task" class="d-inline">
-          <input type="hidden" name="task_id" value="{{ task.id }}">
-          <input type="hidden" name="outcome" value="vm_left">
-          <button type="submit" class="btn btn-sm btn-outline-secondary"
-                  style="font-size:.72rem;padding:2px 8px">VM Left</button>
-        </form>
-        <form method="POST" action="/leads/{{ task.control_number }}/complete_task" class="d-inline">
-          <input type="hidden" name="task_id" value="{{ task.id }}">
-          <input type="hidden" name="outcome" value="connected">
-          <button type="submit" class="btn btn-sm btn-outline-success"
-                  style="font-size:.72rem;padding:2px 8px">Connected ✓</button>
-        </form>
-      </div>
-      {% elif task.task_type == 'email' %}
-      <div class="mt-2">
-        <form method="POST" action="/leads/{{ task.control_number }}/complete_task" class="d-inline">
-          <input type="hidden" name="task_id" value="{{ task.id }}">
-          <input type="hidden" name="outcome" value="sent">
-          <button type="submit" class="btn btn-sm btn-outline-secondary"
-                  style="font-size:.72rem;padding:2px 8px">✓ Mark Sent</button>
-        </form>
-      </div>
-      {% elif task.task_type == 'message' %}
-      <div class="mt-2">
-        <form method="POST" action="/leads/{{ task.control_number }}/complete_task" class="d-inline">
-          <input type="hidden" name="task_id" value="{{ task.id }}">
-          <input type="hidden" name="outcome" value="done">
-          <button type="submit" class="btn btn-sm btn-outline-secondary"
-                  style="font-size:.72rem;padding:2px 8px">✓ Mark Sent</button>
-        </form>
-      </div>
-      {% endif %}
-
-      <!-- Reschedule toggle -->
-      <div class="mt-1">
-        <button type="button" class="reschedule-toggle p-0 text-muted"
-                style="font-size:.72rem;border:none;background:none"
-                data-target="reschedule-{{ task.id }}">📅 Reschedule</button>
-        <div class="d-none mt-1" id="reschedule-{{ task.id }}">
-          <form method="POST" action="/leads/{{ task.control_number }}/reschedule_task"
-                class="d-flex gap-1">
-            <input type="hidden" name="task_id" value="{{ task.id }}">
-            <input type="date" name="due_date" class="form-control form-control-sm"
-                   value="{{ task.due_date }}" style="font-size:.8rem">
-            <button type="submit" class="btn btn-sm btn-dark flex-shrink-0">Save</button>
-          </form>
-        </div>
-      </div>
-
-      <!-- Inline quick note -->
-      <div class="mt-2">
-        <button type="button" class="note-toggle p-0 text-muted"
-                style="font-size:.75rem;border:none;background:none"
-                data-target="note-{{ task.id }}">📝 Add note</button>
-        <div class="d-none mt-1" id="note-{{ task.id }}">
-          <form method="POST" action="/leads/{{ task.control_number }}/note"
-                class="d-flex gap-1">
-            <textarea name="note" class="form-control form-control-sm" rows="1"
-                      placeholder="Quick note…" style="resize:none;font-size:.8rem"></textarea>
-            <button type="submit" class="btn btn-sm btn-dark flex-shrink-0">Save</button>
-          </form>
-        </div>
-      </div>
-
-    </div>
-  </div>
-  {% endfor %}
-</div>
-
-{% else %}
-<div class="text-center py-5 text-muted">
-  <div style="font-size:3rem">✅</div>
-  <h5 class="mt-3">Nothing due today</h5>
-  <p>Start a cadence on a new lead to generate tasks.</p>
-  <a href="/leads" class="btn btn-dark">View Pipeline →</a>
-</div>
-{% endif %}
-
-<!-- Quick-complete modal -->
-<div class="modal fade" id="completeModal" tabindex="-1">
-  <div class="modal-dialog modal-sm">
-    <div class="modal-content">
-      <div class="modal-header py-2">
-        <h6 class="modal-title">Log outcome</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <form method="POST" id="completeForm">
-        <div class="modal-body">
-          <div id="outcome-options"></div>
-          <textarea name="notes" class="form-control mt-2" rows="2"
-                    placeholder="Notes (optional)"></textarea>
-        </div>
-        <div class="modal-footer py-2">
-          <button type="submit" class="btn btn-success btn-sm">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-{% endblock %}
-{% block scripts %}
-<script>
-const callOpts   = ["connected","no_answer","vm_left","wrong_number","callback_scheduled"];
-const emailOpts  = ["sent","replied","bounced"];
-const otherOpts  = ["done","skipped"];
-
-document.querySelectorAll('.complete-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const taskId = btn.dataset.taskId;
-    const cn     = btn.dataset.cn;
-    const type   = btn.dataset.type;
-    const opts   = (type==='call'||type==='vm') ? callOpts :
-                   (type==='email') ? emailOpts : otherOpts;
-    document.getElementById('completeForm').action = `/leads/${cn}/complete_task`;
-    const hidden = document.createElement('input');
-    hidden.type  = 'hidden';
-    hidden.name  = 'task_id';
-    hidden.value = taskId;
-    document.getElementById('completeForm').appendChild(hidden);
-    const div = document.getElementById('outcome-options');
-    div.innerHTML = opts.map(o =>
-      `<div class="form-check">
-        <input class="form-check-input" type="radio" name="outcome" value="${o}" id="o-${o}" ${o===opts[0]?'checked':''}>
-        <label class="form-check-label" for="o-${o}">${o.replace(/_/g,' ')}</label>
-       </div>`
-    ).join('');
-    new bootstrap.Modal(document.getElementById('completeModal')).show();
-  });
-});
-
-document.querySelectorAll('.note-toggle').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const div = document.getElementById(btn.dataset.target);
-    div.classList.toggle('d-none');
-    if (!div.classList.contains('d-none')) div.querySelector('textarea').focus();
-  });
-});
-
-document.querySelectorAll('.reschedule-toggle').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.getElementById(btn.dataset.target).classList.toggle('d-none');
-  });
-});
-</script>
 {% endblock %}
