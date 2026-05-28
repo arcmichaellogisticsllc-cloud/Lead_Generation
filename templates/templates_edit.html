@@ -1,107 +1,135 @@
 {% extends "base.html" %}
-{% block title %}Email Templates — GA Leads{% endblock %}
+{% block title %}Templates — Pipeline{% endblock %}
+
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <div>
-    <h4 class="fw-bold mb-0">Outreach Templates</h4>
-    <p class="text-muted small mb-0">
-      <strong>Variables:</strong>
-      <code>{{first_name}}</code>
-      <code>{{business_name}}</code>
-      <code>{{business_type}}</code>
-      <code>{{city}}</code>
-      <code>{{nearby_city}}</code>
-      <code>{{stat}}</code> — industry proof point<br>
-      <code>{{pain_point}}</code> — industry opening question
-      &nbsp;·&nbsp;
-      <code>{{outcome_context}}</code> — adaptive opener<br>
-      <strong>Phase 5 signals:</strong>
-      <code>{{web_presence}}</code> — "I came across your site / Yelp / Google listing"
-      &nbsp;·&nbsp;
-      <code>{{stack_hook}}</code> — processor/SaaS acknowledgment + gap pivot (or website-no-payment signal); includes leading <code>\n\n</code> when active, empty otherwise
-      &nbsp;·&nbsp;
-      <code>{{review_detail}}</code> — specific review quote if payment friction detected
-      &nbsp;·&nbsp;
-      <code>{{review_hook}}</code> — generic review hook (legacy)
-      &nbsp;·&nbsp;
-      <code>{{sender_name}}</code>
-      &nbsp;·&nbsp;
-      <code>{{sender_email}}</code>
-      &nbsp;·&nbsp;
-      <code>{{sender_phone}}</code>
-      &nbsp;·&nbsp;
-      <code>{{sender_company}}</code>
-    </p>
-  </div>
+{# ── Variable reference bar ───────────────────────────────────── #}
+<div class="mb-5 px-4 py-3 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-500 leading-relaxed">
+  <span class="font-semibold text-stone-700 mr-2">Variables:</span>
+  <span class="font-mono">
+    {% raw %}{{first_name}}{% endraw %}
+    {% raw %}{{business_name}}{% endraw %}
+    {% raw %}{{business_type}}{% endraw %}
+    {% raw %}{{city}}{% endraw %}
+    {% raw %}{{nearby_city}}{% endraw %}
+    {% raw %}{{stat}}{% endraw %}
+    {% raw %}{{pain_point}}{% endraw %}
+    {% raw %}{{outcome_context}}{% endraw %}
+    <span class="text-stone-300 mx-1">·</span>
+    {% raw %}{{web_presence}}{% endraw %}
+    {% raw %}{{stack_hook}}{% endraw %}
+    {% raw %}{{review_detail}}{% endraw %}
+    {% raw %}{{review_hook}}{% endraw %}
+    <span class="text-stone-300 mx-1">·</span>
+    {% raw %}{{sender_name}}{% endraw %}
+    {% raw %}{{sender_email}}{% endraw %}
+    {% raw %}{{sender_phone}}{% endraw %}
+    {% raw %}{{sender_company}}{% endraw %}
+  </span>
 </div>
 
-<div class="row g-4">
+{# ── Template cards grid ─────────────────────────────────────── #}
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-8">
 {% for step, tmpl in templates.items() %}
-<div class="col-12 col-xl-6" id="step-{{ step }}">
-  <div class="card task-card">
-    <div class="card-body">
-      <h6 class="fw-bold mb-1">
-        {% if step == 5 %}💬{% elif step == 2 %}📱{% else %}✉️{% endif %}
-        {{ tmpl.name }}
-      </h6>
-      <div class="text-muted small mb-3">
+<div class="bg-white rounded-lg shadow-card border border-stone-200" id="step-{{ step }}">
+
+  {# Card header #}
+  <div class="px-5 py-3 border-b border-stone-200 flex items-center gap-2">
+    {% if step == 2 %}
+    <i data-lucide="voicemail" class="w-4 h-4 text-stone-400 flex-shrink-0"></i>
+    {% elif step == 5 %}
+    <i data-lucide="message-square" class="w-4 h-4 text-stone-400 flex-shrink-0"></i>
+    {% else %}
+    <i data-lucide="mail" class="w-4 h-4 text-stone-400 flex-shrink-0"></i>
+    {% endif %}
+
+    <span class="text-sm font-semibold text-stone-900">{{ tmpl.name }}</span>
+
+    {# Type badge #}
+    {% if step == 5 %}
+    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-50 text-green-700">SMS</span>
+    {% elif step == 2 %}
+    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-stone-100 text-stone-600">VM</span>
+    {% else %}
+    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-600">Email</span>
+    {% endif %}
+
+    {# Day / label from cadence def #}
+    <span class="text-xs text-stone-400 ml-auto">
+      {% if step == 2 %}Day 1 · Voicemail Script
+      {% elif step == 5 %}Day 3 · SMS
+      {% else %}
         {% for touch in cadence_def if touch.step == step %}
-          Day {{ touch.day }} · {{ touch.label }}
+        Day {{ touch.day }} · {{ touch.label }}
         {% endfor %}
-        {% if step == 2 %}Day 1 · Voicemail Script{% endif %}
-        {% if step == 5 %}<span class="badge bg-success ms-1">SMS</span>{% endif %}
+      {% endif %}
+    </span>
+  </div>
+
+  {# Form body #}
+  <div class="px-5 py-4">
+    <form method="POST" action="/templates/save">
+      <input type="hidden" name="step" value="{{ step }}">
+
+      {# Subject (emails only) #}
+      {% if step not in (2, 5) %}
+      <div class="mb-3">
+        <label class="block text-xs font-medium text-stone-500 mb-1">Subject</label>
+        <input type="text" name="subject"
+               class="w-full text-sm border border-stone-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-shadow"
+               value="{{ tmpl.subject or '' }}"
+               placeholder="Subject line">
+      </div>
+      {% else %}
+      <input type="hidden" name="subject" value="">
+      {% endif %}
+
+      {# Body #}
+      <div class="mb-3">
+        <label class="block text-xs font-medium text-stone-500 mb-1">Body</label>
+        <textarea name="body" rows="8"
+                  class="w-full text-sm border border-stone-200 rounded-md px-3 py-2 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-400 transition-shadow">{{ tmpl.body }}</textarea>
       </div>
 
-      <form method="POST" action="/templates/save">
-        <input type="hidden" name="step" value="{{ step }}">
-        {% if step not in (2, 5) %}
-        <div class="mb-2">
-          <label class="form-label small text-muted mb-1">Subject</label>
-          <input type="text" name="subject" class="form-control form-control-sm"
-                 value="{{ tmpl.subject or '' }}"
-                 placeholder="Subject line">
-        </div>
-        {% else %}
-        <input type="hidden" name="subject" value="">
-        {% endif %}
-        <div class="mb-2">
-          <label class="form-label small text-muted mb-1">Body</label>
-          <textarea name="body" class="form-control template-body">{{ tmpl.body }}</textarea>
-        </div>
-        <div class="d-flex justify-content-between align-items-center">
-          <span class="text-muted small">
-            Last saved: {{ tmpl.updated_at[:10] if tmpl.updated_at else 'default' }}
-          </span>
-          <button type="submit" class="btn btn-sm btn-dark">Save</button>
-        </div>
-      </form>
-    </div>
+      {# Footer #}
+      <div class="flex items-center justify-between">
+        <span class="text-xs text-stone-400">
+          Last saved: {{ tmpl.updated_at[:10] if tmpl.updated_at else 'default' }}
+        </span>
+        <button type="submit"
+                class="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-md font-medium bg-stone-800 text-white hover:bg-stone-900 transition-colors">
+          <i data-lucide="save" class="w-4 h-4"></i>Save
+        </button>
+      </div>
+    </form>
   </div>
+
 </div>
 {% endfor %}
 </div>
 
-<!-- Proof points reference -->
-<div class="card task-card mt-4">
-  <div class="card-body">
-    <h6 class="fw-bold mb-3">
-      Proof Point Pool
-      <span class="text-muted fw-normal small ms-1">— used as <code>{{stat}}</code> in Day 9 template</span>
-    </h6>
-    <div class="row g-2">
+{# ── Proof point pool ─────────────────────────────────────────── #}
+<div class="bg-white rounded-lg shadow-card border border-stone-200">
+  <div class="px-5 py-3 border-b border-stone-200">
+    <h3 class="text-sm font-semibold text-stone-900">Proof Point Pool</h3>
+    <p class="text-xs text-stone-400 mt-0.5">
+      Used as <code class="font-mono bg-stone-100 px-1 rounded text-stone-500">{% raw %}{{stat}}{% endraw %}</code>
+      in the Day 9 template
+    </p>
+  </div>
+  <div class="px-5 py-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
       {% for p in proof_points %}
-      <div class="col-12 col-md-6">
-        <div class="bg-light rounded p-2 small d-flex gap-2">
-          <span class="text-muted">{{ loop.index }}.</span>
-          <span>{{ p }}</span>
-        </div>
+      <div class="flex gap-2 text-xs">
+        <span class="text-stone-300 font-mono flex-shrink-0 w-5 pt-1.5">{{ loop.index }}.</span>
+        <span class="text-stone-600 bg-stone-50 rounded px-2 py-1.5 flex-1 leading-relaxed">{{ p }}</span>
       </div>
       {% endfor %}
     </div>
-    <p class="text-muted small mt-2 mb-0">
+    <p class="text-xs text-stone-400">
       The proof point is selected per lead based on their industry category.
-      Edit <code>PROOF_POINTS</code> in <code>app.py</code> to add your own.
+      Edit <code class="font-mono bg-stone-100 px-1 rounded text-stone-500">PROOF_POINTS</code>
+      in <code class="font-mono bg-stone-100 px-1 rounded text-stone-500">app.py</code> to customize.
     </p>
   </div>
 </div>

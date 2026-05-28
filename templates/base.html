@@ -3,123 +3,217 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}GA Payment Leads{% endblock %}</title>
-  <link href="/static/css/bootstrap.min.css" rel="stylesheet">
-  <link href="/static/css/bootstrap-icons.css" rel="stylesheet">
+  <title>{% block title %}Pipeline{% endblock %}</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          },
+          colors: {
+            primary: {
+              DEFAULT: '#3b82f6',
+              hover:   '#2563eb',
+            },
+          },
+          boxShadow: {
+            card:         '0 1px 2px rgba(0,0,0,0.04)',
+            'card-hover': '0 2px 8px rgba(0,0,0,0.06)',
+          },
+        },
+      },
+    };
+  </script>
   <style>
-    body { background: #f8f9fa; font-size: 0.92rem; }
-    .navbar { background: #1a1a2e !important; }
-    .navbar-brand { font-weight: 700; letter-spacing: .5px; color: #e2b96f !important; }
-    .nav-link { color: rgba(255,255,255,.8) !important; }
-    .nav-link.active { color: #e2b96f !important; }
-
-    .priority-HOT  { background: #ff6b6b22; border-left: 3px solid #ff6b6b; }
-    .priority-WARM { background: #ffd93d22; border-left: 3px solid #ffd93d; }
-    .priority-COLD { background: #6bcbff22; border-left: 3px solid #6bcbff; }
-
-    .badge-HOT  { background: #ff6b6b; }
-    .badge-WARM { background: #f5a623; }
-    .badge-COLD { background: #4a9eff; }
-
-    .step-done    { opacity: .45; }
-    .step-pending { font-weight: 600; }
-    .step-call    { color: #198754; }
-    .step-email   { color: #0d6efd; }
-    .step-vm      { color: #6f42c1; }
-    .step-message { color: #fd7e14; }
-    .step-log     { color: #6c757d; }
-
-    .cadence-timeline { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
-    .cadence-dot { width: 10px; height: 10px; border-radius: 50%; background: #dee2e6; }
-    .cadence-dot.done { background: #198754; }
-    .cadence-dot.pending { background: #dee2e6; border: 2px solid #0d6efd; }
-    .cadence-dot.overdue { background: #ff6b6b; }
-
-    .task-card { border: none; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-    .task-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,.12); }
-
-    .email-draft { background: #fff; border: 1px solid #dee2e6;
-                   border-radius: 6px; font-family: monospace; font-size: .85rem; }
-    textarea.template-body { min-height: 160px; font-family: monospace; font-size: .85rem; }
+    /* suppress Alpine cloak flicker */
+    [x-cloak] { display: none !important; }
   </style>
 </head>
-<body>
+<body class="bg-stone-50 text-stone-900 font-sans antialiased">
 
-<nav class="navbar navbar-expand-lg mb-4">
-  <div class="container-fluid px-4">
-    <a class="navbar-brand" href="/">⚡ GA Leads</a>
-    <div class="navbar-nav ms-3 flex-row gap-3">
-      <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/">Dashboard</a>
-      <a class="nav-link {% if request.path in ('/leads','/pipeline') or (request.path.startswith('/leads/') and '/leads' in request.path) %}active{% endif %}" href="/pipeline">Pipeline</a>
-      <a class="nav-link {% if '/templates' in request.path %}active{% endif %}" href="/templates">Templates</a>
-      <a class="nav-link {% if '/analytics' in request.path %}active{% endif %}" href="/analytics">Analytics</a>
-      <a class="nav-link {% if '/runs' in request.path %}active{% endif %}" href="/runs">Runs</a>
-    </div>
+<!-- ── Sidebar ──────────────────────────────────────────────── -->
+<aside class="fixed left-0 top-0 h-screen w-[220px] bg-white border-r border-stone-200 flex flex-col z-30">
 
-    <!-- Notification bell -->
-    <div class="ms-auto dropdown">
-      <button class="btn btn-link nav-link position-relative p-1" type="button"
-              id="notifDropdown" data-bs-toggle="dropdown" aria-expanded="false"
-              style="color:rgba(255,255,255,.8)">
-        <i class="bi bi-bell-fill fs-5"></i>
-        {% if notif_count %}
-        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
-              style="font-size:.6rem">
-          {{ notif_count if notif_count < 100 else '99+' }}
-        </span>
-        {% endif %}
-      </button>
-      <ul class="dropdown-menu dropdown-menu-end shadow" id="notifMenu"
-          style="min-width:320px;max-height:420px;overflow-y:auto" aria-labelledby="notifDropdown">
-        <li class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
-          <span class="fw-bold small">Notifications</span>
-          {% if notif_count %}
-          <form method="POST" action="/notifications/read" class="mb-0">
-            <button class="btn btn-link btn-sm p-0 text-muted" style="font-size:.8rem">
-              Mark all read
-            </button>
-          </form>
-          {% endif %}
-        </li>
-        {% if notif_items %}
-        {% for n in notif_items %}
-        <li>
-          <a class="dropdown-item py-2 px-3 {% if not n.read %}bg-light{% endif %}"
-             href="{{ n.link or '#' }}" style="white-space:normal">
-            <div class="d-flex gap-2 align-items-start">
-              <span style="font-size:1rem">{{ n.icon }}</span>
-              <div>
-                <div class="fw-semibold" style="font-size:.83rem">{{ n.title }}</div>
-                {% if n.body %}
-                <div class="text-muted" style="font-size:.78rem">{{ n.body }}</div>
-                {% endif %}
-                <div class="text-muted" style="font-size:.73rem">
-                  {{ n.created_at[:16] if n.created_at else '' }}
-                </div>
-              </div>
-            </div>
-          </a>
-        </li>
-        {% endfor %}
-        {% else %}
-        <li><p class="text-muted small px-3 py-2 mb-0">No new notifications</p></li>
-        {% endif %}
-        <li class="border-top">
-          <a class="dropdown-item text-center small text-muted py-2" href="/runs">
-            View pipeline run history →
-          </a>
-        </li>
-      </ul>
-    </div>
-
+  <!-- Logo -->
+  <div class="flex items-center gap-2 px-4 py-4 border-b border-stone-100">
+    <i data-lucide="zap" class="w-4 h-4 text-primary flex-shrink-0"></i>
+    <span class="font-semibold text-[18px] tracking-tight text-stone-900">Pipeline</span>
   </div>
-</nav>
 
-<div class="container-fluid px-4">
-  {% block content %}{% endblock %}
+  <!-- Search trigger -->
+  <div class="px-3 pt-3 pb-2">
+    <button onclick="alert('Coming soon')"
+            class="w-full flex items-center justify-between px-3 py-1.5 rounded-md border border-stone-200 bg-stone-50 text-sm hover:bg-stone-100 transition-colors">
+      <span class="text-stone-400">Search leads...</span>
+      <span class="text-[11px] font-mono bg-stone-200 text-stone-500 px-1.5 py-0.5 rounded">⌘K</span>
+    </button>
+  </div>
+
+  <!-- Nav -->
+  <nav class="flex-1 overflow-y-auto px-3 pt-2">
+
+    <p class="text-[10px] font-semibold tracking-widest uppercase text-stone-400 px-2 mb-1">Workspace</p>
+    <ul class="space-y-0.5 mb-4">
+      <li>
+        <a href="/" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-colors
+          {% if request.path == '/' %}bg-stone-100 text-stone-900 font-medium{% else %}text-stone-600 hover:bg-stone-100 hover:text-stone-900{% endif %}">
+          <i data-lucide="inbox" class="w-4 h-4 flex-shrink-0"></i>
+          Today
+        </a>
+      </li>
+      <li>
+        <a href="/pipeline" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-colors
+          {% if request.path == '/pipeline' %}bg-stone-100 text-stone-900 font-medium{% else %}text-stone-600 hover:bg-stone-100 hover:text-stone-900{% endif %}">
+          <i data-lucide="kanban" class="w-4 h-4 flex-shrink-0"></i>
+          Pipeline
+        </a>
+      </li>
+      <li>
+        <a href="/leads" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-colors
+          {% if request.path == '/leads' %}bg-stone-100 text-stone-900 font-medium{% else %}text-stone-600 hover:bg-stone-100 hover:text-stone-900{% endif %}">
+          <i data-lucide="list" class="w-4 h-4 flex-shrink-0"></i>
+          All Leads
+        </a>
+      </li>
+    </ul>
+
+    <p class="text-[10px] font-semibold tracking-widest uppercase text-stone-400 px-2 mb-1">Tools</p>
+    <ul class="space-y-0.5">
+      <li>
+        <a href="/templates" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-colors
+          {% if '/templates' in request.path %}bg-stone-100 text-stone-900 font-medium{% else %}text-stone-600 hover:bg-stone-100 hover:text-stone-900{% endif %}">
+          <i data-lucide="file-text" class="w-4 h-4 flex-shrink-0"></i>
+          Templates
+        </a>
+      </li>
+      <li>
+        <a href="/analytics" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-colors
+          {% if '/analytics' in request.path %}bg-stone-100 text-stone-900 font-medium{% else %}text-stone-600 hover:bg-stone-100 hover:text-stone-900{% endif %}">
+          <i data-lucide="bar-chart-3" class="w-4 h-4 flex-shrink-0"></i>
+          Analytics
+        </a>
+      </li>
+      <li>
+        <a href="/runs" class="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-colors
+          {% if '/runs' in request.path %}bg-stone-100 text-stone-900 font-medium{% else %}text-stone-600 hover:bg-stone-100 hover:text-stone-900{% endif %}">
+          <i data-lucide="history" class="w-4 h-4 flex-shrink-0"></i>
+          Run History
+        </a>
+      </li>
+    </ul>
+  </nav>
+
+  <!-- Notification bell -->
+  <div class="relative px-3 py-3 border-t border-stone-200" x-data="{ open: false }">
+    <button @click="open = !open"
+            class="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm text-stone-600 hover:bg-stone-100 hover:text-stone-900 transition-colors">
+      <div class="relative flex-shrink-0">
+        <i data-lucide="bell" class="w-4 h-4"></i>
+        {% if notif_count %}
+        <span class="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+        {% endif %}
+      </div>
+      <span>Notifications</span>
+      {% if notif_count %}
+      <span class="ml-auto font-mono text-xs bg-red-50 text-red-600 px-1.5 py-0.5 rounded">
+        {{ notif_count if notif_count < 100 else '99+' }}
+      </span>
+      {% endif %}
+    </button>
+
+    <!-- Dropdown (opens upward) -->
+    <div x-show="open" x-cloak @click.outside="open = false"
+         x-transition:enter="transition ease-out duration-100"
+         x-transition:enter-start="opacity-0 translate-y-1"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-75"
+         x-transition:leave-start="opacity-100 translate-y-0"
+         x-transition:leave-end="opacity-0 translate-y-1"
+         class="absolute bottom-full left-0 right-0 mb-1 bg-white border border-stone-200 rounded-lg shadow-lg max-h-80 overflow-y-auto">
+      <div class="flex items-center justify-between px-3 py-2 border-b border-stone-100">
+        <span class="text-xs font-semibold text-stone-700">Notifications</span>
+        {% if notif_count %}
+        <form method="POST" action="/notifications/read">
+          <button class="text-xs text-stone-400 hover:text-stone-600 transition-colors">Mark all read</button>
+        </form>
+        {% endif %}
+      </div>
+      {% if notif_items %}
+        {% for n in notif_items %}
+        <a href="{{ n.link or '#' }}"
+           class="flex items-start gap-2 px-3 py-2 hover:bg-stone-50 transition-colors border-b border-stone-50 last:border-0
+             {% if not n.read %}bg-blue-50/50{% endif %}">
+          <span class="text-base leading-none mt-0.5 flex-shrink-0">{{ n.icon }}</span>
+          <div class="min-w-0">
+            <div class="text-xs font-medium text-stone-800 truncate">{{ n.title }}</div>
+            {% if n.body %}
+            <div class="text-xs text-stone-500 truncate">{{ n.body }}</div>
+            {% endif %}
+            <div class="text-[11px] text-stone-400 font-mono mt-0.5">
+              {{ n.created_at[:16] if n.created_at else '' }}
+            </div>
+          </div>
+        </a>
+        {% endfor %}
+      {% else %}
+        <p class="text-xs text-stone-400 px-3 py-4 text-center">No new notifications</p>
+      {% endif %}
+      <a href="/runs"
+         class="block text-center text-xs text-stone-400 hover:text-stone-600 py-2 border-t border-stone-100 transition-colors">
+        View run history →
+      </a>
+    </div>
+  </div>
+
+</aside>
+
+<!-- ── Main area ─────────────────────────────────────────────── -->
+<div class="ml-[220px] min-h-screen flex flex-col">
+
+  <!-- Sticky top bar -->
+  <header class="sticky top-0 z-20 h-14 bg-white border-b border-stone-200 flex items-center justify-between px-6">
+    <div class="text-sm font-medium text-stone-700">
+      {% block breadcrumb %}
+        {% if request.path == '/' %}Today
+        {% elif request.path == '/pipeline' %}Pipeline
+        {% elif request.path == '/leads' %}All Leads
+        {% elif request.path.startswith('/leads/') %}Lead Detail
+        {% elif '/templates' in request.path %}Templates
+        {% elif '/analytics' in request.path %}Analytics
+        {% elif '/runs' in request.path %}Run History
+        {% elif '/today' in request.path %}Call List
+        {% else %}Pipeline
+        {% endif %}
+      {% endblock %}
+    </div>
+    <div class="flex items-center gap-2">
+      {% block page_actions %}{% endblock %}
+    </div>
+  </header>
+
+  <!-- Page content -->
+  <main class="flex-1 p-6">
+    {% block content %}{% endblock %}
+  </main>
+
 </div>
 
-<script src="/static/js/bootstrap.bundle.min.js"></script>
+<!-- Scripts — Lucide before Alpine so icons render on first paint -->
+<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script>lucide.createIcons();</script>
+<script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 {% block scripts %}{% endblock %}
+
 </body>
 </html>

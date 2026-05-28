@@ -1,0 +1,141 @@
+{# ================================================================
+   _components.html — Reusable Jinja2 macros for Pipeline UI
+   Import in pages with:
+     {% from '_components.html' import btn_primary, btn_secondary,
+        btn_ghost, btn_danger, badge_priority, badge_status,
+        badge_neutral, card, stat, empty_state with context %}
+   ================================================================ #}
+
+
+{# ── Buttons ──────────────────────────────────────────────────── #}
+
+{% macro btn_primary(text, href=None, type="button", icon=None, size="md") %}
+{%- set sz = "px-2.5 py-1.5 text-xs" if size == "sm" else ("px-4 py-2.5 text-base" if size == "lg" else "px-3 py-2 text-sm") -%}
+{%- set cls = "inline-flex items-center gap-1.5 rounded-md font-medium transition-colors bg-primary text-white hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1 " + sz -%}
+{%- if href %}<a href="{{ href }}" class="{{ cls }}">
+{%- else %}<button type="{{ type }}" class="{{ cls }}">
+{%- endif -%}
+{%- if icon %}<i data-lucide="{{ icon }}" class="w-4 h-4 flex-shrink-0"></i>{% endif -%}
+{{- text -}}
+{%- if href %}</a>{%- else %}</button>{%- endif %}
+{% endmacro %}
+
+{% macro btn_secondary(text, href=None, type="button", icon=None, size="md") %}
+{%- set sz = "px-2.5 py-1.5 text-xs" if size == "sm" else ("px-4 py-2.5 text-base" if size == "lg" else "px-3 py-2 text-sm") -%}
+{%- set cls = "inline-flex items-center gap-1.5 rounded-md font-medium transition-colors bg-white text-stone-700 border border-stone-300 hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-stone-300 focus:ring-offset-1 " + sz -%}
+{%- if href %}<a href="{{ href }}" class="{{ cls }}">
+{%- else %}<button type="{{ type }}" class="{{ cls }}">
+{%- endif -%}
+{%- if icon %}<i data-lucide="{{ icon }}" class="w-4 h-4 flex-shrink-0"></i>{% endif -%}
+{{- text -}}
+{%- if href %}</a>{%- else %}</button>{%- endif %}
+{% endmacro %}
+
+{% macro btn_ghost(text, href=None, type="button", icon=None, size="md") %}
+{%- set sz = "px-2.5 py-1.5 text-xs" if size == "sm" else ("px-4 py-2.5 text-base" if size == "lg" else "px-3 py-2 text-sm") -%}
+{%- set cls = "inline-flex items-center gap-1.5 rounded-md font-medium transition-colors text-stone-700 hover:bg-stone-100 focus:outline-none focus:ring-2 focus:ring-stone-300 focus:ring-offset-1 " + sz -%}
+{%- if href %}<a href="{{ href }}" class="{{ cls }}">
+{%- else %}<button type="{{ type }}" class="{{ cls }}">
+{%- endif -%}
+{%- if icon %}<i data-lucide="{{ icon }}" class="w-4 h-4 flex-shrink-0"></i>{% endif -%}
+{{- text -}}
+{%- if href %}</a>{%- else %}</button>{%- endif %}
+{% endmacro %}
+
+{% macro btn_danger(text, href=None, type="button", icon=None, size="md") %}
+{%- set sz = "px-2.5 py-1.5 text-xs" if size == "sm" else ("px-4 py-2.5 text-base" if size == "lg" else "px-3 py-2 text-sm") -%}
+{%- set cls = "inline-flex items-center gap-1.5 rounded-md font-medium transition-colors bg-white text-red-600 border border-stone-300 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 " + sz -%}
+{%- if href %}<a href="{{ href }}" class="{{ cls }}">
+{%- else %}<button type="{{ type }}" class="{{ cls }}">
+{%- endif -%}
+{%- if icon %}<i data-lucide="{{ icon }}" class="w-4 h-4 flex-shrink-0"></i>{% endif -%}
+{{- text -}}
+{%- if href %}</a>{%- else %}</button>{%- endif %}
+{% endmacro %}
+
+
+{# ── Badges ───────────────────────────────────────────────────── #}
+
+{% macro badge_priority(priority) %}
+{%- if priority == "HOT" -%}
+<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700">HOT</span>
+{%- elif priority == "WARM" -%}
+<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">WARM</span>
+{%- elif priority == "COLD" -%}
+<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-cyan-50 text-cyan-700">COLD</span>
+{%- else -%}
+<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-stone-100 text-stone-500">{{ priority or 'SKIP' }}</span>
+{%- endif %}
+{% endmacro %}
+
+{% macro badge_status(status) %}
+{%- set label = (status or '') | replace("_", " ") | title -%}
+{%- if status == "converted" -%}
+  {%- set dot_cls = "text-green-500" -%}
+{%- elif status in ("dead", "no_contact") -%}
+  {%- set dot_cls = "text-red-400" -%}
+{%- elif status in ("active", "in_cadence") -%}
+  {%- set dot_cls = "text-blue-400" -%}
+{%- else -%}
+  {%- set dot_cls = "text-stone-300" -%}
+{%- endif -%}
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-stone-100 text-stone-700">
+  <span class="w-1.5 h-1.5 rounded-full flex-shrink-0 {{ dot_cls }} bg-current"></span>{{ label }}
+</span>
+{% endmacro %}
+
+{% macro badge_neutral(text) %}
+<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-stone-100 text-stone-700">{{ text }}</span>
+{% endmacro %}
+
+
+{# ── Card ─────────────────────────────────────────────────────── #}
+
+{% macro card(title=None, action=None) %}
+<div class="bg-white rounded-lg shadow-card border border-stone-200">
+  {%- if title %}
+  <div class="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+    <h3 class="font-semibold text-sm text-stone-900">{{ title }}</h3>
+    {%- if action %}{{ action }}{% endif %}
+  </div>
+  {%- endif %}
+  <div class="px-5 py-4">
+    {{ caller() }}
+  </div>
+</div>
+{% endmacro %}
+
+
+{# ── Stat card ────────────────────────────────────────────────── #}
+
+{% macro stat(label, value, change=None, accent=None) %}
+<div class="bg-white rounded-lg shadow-card border border-stone-200 px-5 py-4">
+  <p class="text-xs font-semibold tracking-wide uppercase text-stone-500 mb-1">{{ label }}</p>
+  <p class="text-2xl font-semibold font-mono leading-none
+    {%- if accent == "danger" %} text-red-600
+    {%- elif accent == "success" %} text-green-600
+    {%- elif accent == "warn" %} text-amber-600
+    {%- else %} text-stone-900
+    {%- endif %}">{{ value }}</p>
+  {%- if change is not none %}
+  <p class="text-xs mt-1.5 font-medium
+    {%- if change >= 0 %} text-green-600{% else %} text-red-600{% endif %}">
+    {{ "+" if change >= 0 else "" }}{{ change }}%
+  </p>
+  {%- endif %}
+</div>
+{% endmacro %}
+
+
+{# ── Empty state ──────────────────────────────────────────────── #}
+
+{% macro empty_state(icon, title, description, action=None) %}
+<div class="flex flex-col items-center justify-center py-16 text-center">
+  <div class="w-12 h-12 rounded-full bg-stone-100 flex items-center justify-center mb-4">
+    <i data-lucide="{{ icon }}" class="w-6 h-6 text-stone-400"></i>
+  </div>
+  <h3 class="text-sm font-semibold text-stone-700 mb-1">{{ title }}</h3>
+  <p class="text-sm text-stone-500 max-w-xs mb-4">{{ description }}</p>
+  {%- if action %}{{ action }}{% endif %}
+</div>
+{% endmacro %}
