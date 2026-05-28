@@ -1,216 +1,212 @@
 {% extends "base.html" %}
-{% block title %}Analytics — GA Leads{% endblock %}
+{% from '_components.html' import stat, badge_priority, badge_neutral, empty_state with context %}
+{% block title %}Analytics — Pipeline{% endblock %}
+
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <div>
-    <h4 class="fw-bold mb-0">Analytics</h4>
-    <p class="text-muted small mb-0">Pipeline performance and scoring accuracy</p>
-  </div>
-</div>
-
-<!-- Overview stats -->
-<div class="row g-3 mb-4">
-  {% set closed = totals.converted + totals.dead %}
-  {% set rate = ((totals.converted / closed * 100) | round(1)) if closed else 0 %}
-  {% for label, val, color in [
-    ("Total Leads",  totals.total,      "secondary"),
-    ("HOT",          totals.hot,        "danger"),
-    ("WARM",         totals.warm,       "warning"),
-    ("In Cadence",   totals.in_cadence, "primary"),
-    ("Converted",    totals.converted,  "success"),
-  ] %}
-  <div class="col-6 col-md-auto">
-    <div class="card task-card text-center px-3 py-2" style="min-width:90px">
-      <div class="fw-bold fs-4 text-{{ color }}">{{ val }}</div>
-      <div class="text-muted small">{{ label }}</div>
-    </div>
-  </div>
-  {% endfor %}
-  <div class="col-6 col-md-auto">
-    <div class="card task-card text-center px-3 py-2" style="min-width:90px">
-      <div class="fw-bold fs-4 text-success">{{ (rate | string + "%") if closed else "—" }}</div>
-      <div class="text-muted small">Win Rate</div>
-    </div>
-  </div>
+{# ── Overview stats ──────────────────────────────────────────── #}
+{% set closed   = totals.converted + totals.dead %}
+{% set win_rate = ((totals.converted / closed * 100) | round(1) | string + "%") if closed else "—" %}
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+  {{ stat("Total Leads",  totals.total) }}
+  {{ stat("HOT",          totals.hot,        accent="danger") }}
+  {{ stat("WARM",         totals.warm,       accent="warn") }}
+  {{ stat("In Cadence",   totals.in_cadence) }}
+  {{ stat("Converted",    totals.converted,  accent="success") }}
+  {{ stat("Win Rate",     win_rate,          accent="success") }}
   {% if avg_touches %}
-  <div class="col-6 col-md-auto">
-    <div class="card task-card text-center px-3 py-2" style="min-width:90px">
-      <div class="fw-bold fs-4">{{ avg_touches }}</div>
-      <div class="text-muted small">Touches → Win</div>
-    </div>
-  </div>
+  {{ stat("Touches → Win", avg_touches) }}
   {% endif %}
 </div>
 
-<div class="row g-4">
+{# ── Two-column layout ───────────────────────────────────────── #}
+<div class="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 items-start">
 
-  <!-- Industry breakdown -->
-  <div class="col-lg-7">
-    <div class="card task-card">
-      <div class="card-body">
-        <h6 class="fw-bold mb-3">Pipeline by Industry</h6>
-        {% if industry_list %}
-        <div class="table-responsive">
-          <table class="table table-sm table-hover mb-0">
-            <thead class="table-light">
-              <tr>
-                <th>Industry</th>
-                <th class="text-center" style="color:#ff6b6b">HOT</th>
-                <th class="text-center" style="color:#f5a623">WARM</th>
-                <th class="text-center text-muted">COLD</th>
-                <th class="text-center text-success">Won</th>
-                <th class="text-center text-danger">Lost</th>
-                <th class="text-center">Rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in industry_list %}
-              <tr>
-                <td class="small">{{ row.category }}</td>
-                <td class="text-center small">
-                  {% if row.HOT %}<span class="badge badge-HOT text-white">{{ row.HOT }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
-                </td>
-                <td class="text-center small">
-                  {% if row.WARM %}<span class="badge badge-WARM text-white">{{ row.WARM }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
-                </td>
-                <td class="text-center text-muted small">{{ row.COLD or '—' }}</td>
-                <td class="text-center small fw-bold text-success">{{ row.converted or '—' }}</td>
-                <td class="text-center small text-danger">{{ row.dead or '—' }}</td>
-                <td class="text-center small">
-                  {% if row.rate is not none %}
-                  <span class="badge {% if row.rate >= 50 %}bg-success{% elif row.rate >= 25 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-                    {{ row.rate }}%
-                  </span>
-                  {% else %}<span class="text-muted">—</span>{% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% else %}
-        <p class="text-muted small mb-0">No leads yet. Run the daily pipeline to populate this.</p>
-        {% endif %}
+  {# ── LEFT: Industry breakdown ── #}
+  <div class="bg-white rounded-lg shadow-card border border-stone-200">
+    <div class="px-5 py-3 border-b border-stone-200">
+      <h3 class="text-sm font-semibold text-stone-900">Pipeline by Industry</h3>
+    </div>
+    <div class="overflow-hidden">
+      {% if industry_list %}
+      <table class="w-full text-xs">
+        <thead class="bg-stone-50 border-b border-stone-200">
+          <tr>
+            <th class="px-4 py-2 text-left font-semibold text-stone-600 tracking-wide uppercase">Industry</th>
+            <th class="px-3 py-2 text-center font-semibold text-red-500 tracking-wide uppercase">HOT</th>
+            <th class="px-3 py-2 text-center font-semibold text-amber-500 tracking-wide uppercase">WARM</th>
+            <th class="px-3 py-2 text-center font-semibold text-stone-400 tracking-wide uppercase">COLD</th>
+            <th class="px-3 py-2 text-center font-semibold text-green-600 tracking-wide uppercase">Won</th>
+            <th class="px-3 py-2 text-center font-semibold text-red-500 tracking-wide uppercase">Lost</th>
+            <th class="px-3 py-2 text-center font-semibold text-stone-500 tracking-wide uppercase">Rate</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-stone-100">
+          {% for row in industry_list %}
+          <tr class="hover:bg-stone-50 transition-colors">
+            <td class="px-4 py-2.5 text-stone-700 font-medium">{{ row.category }}</td>
+            <td class="px-3 py-2.5 text-center">
+              {% if row.HOT %}
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-700">{{ row.HOT }}</span>
+              {% else %}<span class="text-stone-300">—</span>{% endif %}
+            </td>
+            <td class="px-3 py-2.5 text-center">
+              {% if row.WARM %}
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700">{{ row.WARM }}</span>
+              {% else %}<span class="text-stone-300">—</span>{% endif %}
+            </td>
+            <td class="px-3 py-2.5 text-center text-stone-400 font-mono">{{ row.COLD or '—' }}</td>
+            <td class="px-3 py-2.5 text-center font-semibold text-green-600 font-mono">{{ row.converted or '—' }}</td>
+            <td class="px-3 py-2.5 text-center text-red-500 font-mono">{{ row.dead or '—' }}</td>
+            <td class="px-3 py-2.5 text-center">
+              {% if row.rate is not none %}
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold
+                {% if row.rate >= 50 %}bg-green-50 text-green-700
+                {% elif row.rate >= 25 %}bg-amber-50 text-amber-700
+                {% else %}bg-stone-100 text-stone-500{% endif %}">
+                {{ row.rate }}%
+              </span>
+              {% else %}<span class="text-stone-300">—</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="px-5 py-8 text-center">
+        <i data-lucide="bar-chart-3" class="w-8 h-8 text-stone-200 mx-auto mb-2"></i>
+        <p class="text-xs text-stone-400">No industry data yet. Run the daily pipeline to populate.</p>
       </div>
+      {% endif %}
     </div>
   </div>
 
-  <!-- Right column -->
-  <div class="col-lg-5">
+  {# ── RIGHT column ── #}
+  <div class="space-y-5">
 
-    <!-- Scoring accuracy -->
-    <div class="card task-card mb-4">
-      <div class="card-body">
-        <h6 class="fw-bold mb-1">Scoring Accuracy</h6>
-        <p class="text-muted small mb-3">HOT/WARM vs actual closed outcomes</p>
+    {# Scoring accuracy #}
+    <div class="bg-white rounded-lg shadow-card border border-stone-200">
+      <div class="px-5 py-3 border-b border-stone-200">
+        <h3 class="text-sm font-semibold text-stone-900">Scoring Accuracy</h3>
+        <p class="text-xs text-stone-400 mt-0.5">HOT/WARM vs actual closed outcomes</p>
+      </div>
+      <div class="px-5 py-4">
         {% if accuracy %}
-        <div class="table-responsive">
-          <table class="table table-sm mb-0">
-            <thead class="table-light">
-              <tr>
-                <th>Priority</th>
-                <th class="text-center text-success">Won</th>
-                <th class="text-center text-danger">Lost</th>
-                <th class="text-center">Rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for priority in ['HOT', 'WARM', 'COLD'] %}
-              {% set row = accuracy.get(priority, {}) %}
-              {% set won  = row.get('CONVERTED', 0) %}
-              {% set lost = row.get('DEAD', 0) + row.get('NO_CONTACT', 0) %}
-              {% set total = won + lost %}
-              {% if total %}
-              <tr>
-                <td><span class="badge badge-{{ priority }} text-white">{{ priority }}</span></td>
-                <td class="text-center small fw-bold text-success">{{ won }}</td>
-                <td class="text-center small text-danger">{{ lost }}</td>
-                <td class="text-center small">
-                  {% set r = (won / total * 100) | round | int %}
-                  <span class="badge {% if r >= 50 %}bg-success{% elif r >= 25 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ r }}%</span>
-                </td>
-              </tr>
-              {% endif %}
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="border-b border-stone-100">
+              <th class="pb-2 text-left font-semibold text-stone-500 uppercase tracking-wide">Priority</th>
+              <th class="pb-2 text-center font-semibold text-green-600 uppercase tracking-wide">Won</th>
+              <th class="pb-2 text-center font-semibold text-red-500 uppercase tracking-wide">Lost</th>
+              <th class="pb-2 text-center font-semibold text-stone-500 uppercase tracking-wide">Rate</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-50">
+            {% for priority in ['HOT', 'WARM', 'COLD'] %}
+            {% set row  = accuracy.get(priority, {}) %}
+            {% set won  = row.get('CONVERTED', 0) %}
+            {% set lost = row.get('DEAD', 0) + row.get('NO_CONTACT', 0) %}
+            {% set total = won + lost %}
+            {% if total %}
+            <tr>
+              <td class="py-2">{{ badge_priority(priority) }}</td>
+              <td class="py-2 text-center font-semibold text-green-600 font-mono">{{ won }}</td>
+              <td class="py-2 text-center text-red-500 font-mono">{{ lost }}</td>
+              <td class="py-2 text-center">
+                {% set r = (won / total * 100) | round | int %}
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold
+                  {% if r >= 50 %}bg-green-50 text-green-700
+                  {% elif r >= 25 %}bg-amber-50 text-amber-700
+                  {% else %}bg-stone-100 text-stone-500{% endif %}">
+                  {{ r }}%
+                </span>
+              </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
         {% else %}
-        <p class="text-muted small mb-2">No closed leads yet — log outcomes to populate.</p>
+        <p class="text-xs text-stone-400">No closed leads yet — log outcomes to populate.</p>
         {% endif %}
-        <p class="text-muted small mt-2 mb-0">
-          Run <code>scripts/scoring_feedback.py --apply</code> to auto-calibrate weights.
+        <p class="text-xs text-stone-300 mt-3">
+          Run <code class="font-mono bg-stone-100 px-1 rounded text-stone-500">scripts/scoring_feedback.py --apply</code> to auto-calibrate weights.
         </p>
       </div>
     </div>
 
-    <!-- Step drop-off -->
-    <div class="card task-card mb-4">
-      <div class="card-body">
-        <h6 class="fw-bold mb-1">Cadence Drop-off</h6>
-        <p class="text-muted small mb-3">Step reached when leads went cold</p>
+    {# Cadence drop-off #}
+    <div class="bg-white rounded-lg shadow-card border border-stone-200">
+      <div class="px-5 py-3 border-b border-stone-200">
+        <h3 class="text-sm font-semibold text-stone-900">Cadence Drop-off</h3>
+        <p class="text-xs text-stone-400 mt-0.5">Step reached when leads went cold</p>
+      </div>
+      <div class="px-5 py-4">
         {% if dropoff %}
         {% set max_n = dropoff | map(attribute='n') | max %}
-        <div class="vstack gap-2">
+        <div class="space-y-2">
           {% for row in dropoff %}
-          <div class="d-flex align-items-center gap-2 small">
-            <span class="text-muted" style="min-width:52px">Step {{ row.cadence_step }}</span>
-            <div class="flex-grow-1 rounded" style="background:#f0f0f0;height:14px">
-              <div class="rounded h-100 bg-danger"
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-stone-400 w-14 flex-shrink-0">Step {{ row.cadence_step }}</span>
+            <div class="flex-1 h-2 rounded-full bg-stone-100">
+              <div class="h-full rounded-full bg-red-400"
                    style="width:{{ [((row.n / max_n * 100) | round | int), 4] | max }}%"></div>
             </div>
-            <span class="text-muted fw-semibold" style="min-width:18px">{{ row.n }}</span>
+            <span class="text-stone-500 font-mono w-4 text-right flex-shrink-0">{{ row.n }}</span>
           </div>
           {% endfor %}
         </div>
-        <p class="text-muted small mt-2 mb-0">
-          High early-step counts = opener isn't landing. Revisit the Day 1 script.
+        <p class="text-xs text-stone-400 mt-3">
+          High early counts = opener isn't landing. Revisit the Day 1 script.
         </p>
         {% else %}
-        <p class="text-muted small mb-0">No closed leads yet.</p>
+        <p class="text-xs text-stone-400">No closed leads yet.</p>
         {% endif %}
       </div>
     </div>
 
-    <!-- Weekly discovery -->
-    <div class="card task-card">
-      <div class="card-body">
-        <h6 class="fw-bold mb-3">Weekly Discovery</h6>
+    {# Weekly discovery #}
+    <div class="bg-white rounded-lg shadow-card border border-stone-200">
+      <div class="px-5 py-3 border-b border-stone-200">
+        <h3 class="text-sm font-semibold text-stone-900">Weekly Discovery</h3>
+      </div>
+      <div class="px-5 py-4">
         {% if weekly %}
-        <div class="table-responsive">
-          <table class="table table-sm mb-0">
-            <thead class="table-light">
-              <tr>
-                <th>Week of</th>
-                <th class="text-center">Total</th>
-                <th class="text-center" style="color:#ff6b6b">HOT</th>
-                <th class="text-center" style="color:#f5a623">WARM</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in weekly %}
-              <tr>
-                <td class="small text-muted">{{ row.week_start }}</td>
-                <td class="text-center small fw-semibold">{{ row.n }}</td>
-                <td class="text-center small">
-                  {% if row.hot %}<span class="badge badge-HOT text-white">{{ row.hot }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
-                </td>
-                <td class="text-center small">
-                  {% if row.warm %}<span class="badge badge-WARM text-white">{{ row.warm }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="border-b border-stone-100">
+              <th class="pb-2 text-left font-semibold text-stone-400 uppercase tracking-wide">Week of</th>
+              <th class="pb-2 text-center font-semibold text-stone-500 uppercase tracking-wide">Total</th>
+              <th class="pb-2 text-center font-semibold text-red-500 uppercase tracking-wide">HOT</th>
+              <th class="pb-2 text-center font-semibold text-amber-500 uppercase tracking-wide">WARM</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-50">
+            {% for row in weekly %}
+            <tr>
+              <td class="py-2 text-stone-400 font-mono">{{ row.week_start }}</td>
+              <td class="py-2 text-center font-semibold text-stone-700 font-mono">{{ row.n }}</td>
+              <td class="py-2 text-center">
+                {% if row.hot %}
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-700">{{ row.hot }}</span>
+                {% else %}<span class="text-stone-300">—</span>{% endif %}
+              </td>
+              <td class="py-2 text-center">
+                {% if row.warm %}
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700">{{ row.warm }}</span>
+                {% else %}<span class="text-stone-300">—</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
         {% else %}
-        <p class="text-muted small mb-0">No discovery data yet.</p>
+        <p class="text-xs text-stone-400">No discovery data yet.</p>
         {% endif %}
       </div>
     </div>
 
-  </div>
-</div>
+  </div>{# end right column #}
 
+</div>{# end grid #}
 {% endblock %}
