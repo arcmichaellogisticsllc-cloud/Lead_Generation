@@ -1,56 +1,537 @@
 {% extends "base.html" %}
 {% from '_components.html' import btn_primary, btn_secondary, btn_ghost, btn_danger,
    badge_priority, badge_status, badge_neutral, card, stat, empty_state with context %}
+
 {% block title %}Today — Pipeline{% endblock %}
-{% block content %}
-<div class="space-y-6">
-  <div>
-    <h1 class="text-2xl font-semibold mb-1">Today</h1>
-    <p class="text-sm text-stone-500">Foundation test render — full rebuild in next session.</p>
-  </div>
 
-  <div class="grid grid-cols-5 gap-4">
-    {{ stat("TOTAL", "42") }}
-    {{ stat("IN CADENCE", "18") }}
-    {{ stat("HOT", "3", accent="danger") }}
-    {{ stat("WARM", "7", accent="warn") }}
-    {{ stat("CONVERTED", "2", accent="success") }}
-  </div>
-
-  {% call card(title="Sample card") %}
-    <div class="flex items-center gap-2 mb-3">
-      {{ badge_priority("HOT") }}
-      {{ badge_priority("WARM") }}
-      {{ badge_priority("COLD") }}
-      {{ badge_priority("SKIP") }}
-    </div>
-    <p class="text-sm text-stone-600 mb-3">
-      Sample text in Inter. Score <span class="font-mono">87</span> in JetBrains Mono.
-      Control number <span class="font-mono">26012345</span>. Phone
-      <span class="font-mono">(770) 555-0123</span>.
-    </p>
-    <div class="flex gap-2">
-      {{ btn_primary("Primary CTA") }}
-      {{ btn_secondary("Secondary") }}
-      {{ btn_ghost("Ghost") }}
-      {{ btn_danger("Destructive") }}
-    </div>
-  {% endcall %}
-
-  {% call card(title="Badge status variants") %}
-    <div class="flex flex-wrap gap-2">
-      {{ badge_status("active") }}
-      {{ badge_status("converted") }}
-      {{ badge_status("dead") }}
-      {{ badge_status("no_contact") }}
-      {{ badge_status("nurture_90") }}
-      {{ badge_neutral("Tier 1") }}
-      {{ badge_neutral("HVAC") }}
-    </div>
-  {% endcall %}
-
-  {% call card(title="Empty state") %}
-    {{ empty_state("inbox", "Nothing due today", "Start a cadence on a new lead to generate tasks.") }}
-  {% endcall %}
+{% block page_actions %}
+<div class="flex items-center gap-2">
+  <input type="date" value="{{ selected_date }}"
+         onchange="window.location.href='/?date='+this.value"
+         class="text-sm border border-stone-200 rounded-md px-2 py-1.5 text-stone-700
+                focus:outline-none focus:ring-2 focus:ring-primary/30">
+  <a href="/?date={{ selected_date }}"
+     class="inline-flex items-center gap-1.5 rounded-md font-medium transition-colors
+            text-stone-700 hover:bg-stone-100 px-2.5 py-1.5 text-xs">
+    <i data-lucide="refresh-cw" class="w-3.5 h-3.5 flex-shrink-0"></i>Refresh
+  </a>
 </div>
+{% endblock %}
+
+{% block content %}
+{# Keyboard nav wrapper — whole screen is the Alpine component #}
+<div class="max-w-5xl mx-auto space-y-6 pb-12"
+     x-data="todayKeyboard()"
+     @keydown.window="handleKey($event)"
+     x-init="init()">
+
+  {# ── Title ──────────────────────────────────────────────────── #}
+  <div>
+    <h1 class="text-2xl font-semibold">Today</h1>
+    <p class="text-sm text-stone-500">{{ selected_date_display }}</p>
+  </div>
+
+  {# Active filter pill #}
+  {% if active_filter %}
+  <div>
+    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm
+                 bg-blue-50 text-blue-700 border border-blue-200">
+      Filtered: {{ active_filter | title }}
+      <a href="/?date={{ selected_date }}" class="hover:text-blue-900 ml-0.5">
+        <i data-lucide="x" class="w-3 h-3"></i>
+      </a>
+    </span>
+  </div>
+  {% endif %}
+
+  {# ── 3-stat filter band ─────────────────────────────────────── #}
+  <div class="grid grid-cols-3 gap-3">
+
+    {# Due today #}
+    <a href="/?date={{ selected_date }}{% if active_filter != 'due' %}&filter=due{% endif %}"
+       class="block bg-white rounded-lg border px-5 py-4 transition-all shadow-card
+              {% if active_filter == 'due' %}border-primary ring-2 ring-primary/20{% else %}border-stone-200 hover:shadow-card-hover{% endif %}">
+      <p class="text-xs font-semibold tracking-wide uppercase text-stone-500 mb-1">Due Today</p>
+      <p class="text-2xl font-semibold font-mono text-stone-900">{{ due_today_count }}</p>
+    </a>
+
+    {# New leads #}
+    <a href="/?date={{ selected_date }}{% if active_filter != 'new' %}&filter=new{% endif %}"
+       class="block bg-white rounded-lg border px-5 py-4 transition-all shadow-card
+              {% if active_filter == 'new' %}border-primary ring-2 ring-primary/20{% else %}border-stone-200 hover:shadow-card-hover{% endif %}">
+      <p class="text-xs font-semibold tracking-wide uppercase text-stone-500 mb-1">New Leads</p>
+      <p class="text-2xl font-semibold font-mono text-stone-900">{{ new_leads_count }}</p>
+    </a>
+
+    {# Overdue #}
+    <a href="/?date={{ selected_date }}{% if active_filter != 'overdue' %}&filter=overdue{% endif %}"
+       class="block bg-white rounded-lg border px-5 py-4 transition-all shadow-card
+              {% if active_filter == 'overdue' %}border-primary ring-2 ring-primary/20{% else %}border-stone-200 hover:shadow-card-hover{% endif %}">
+      <p class="text-xs font-semibold tracking-wide uppercase text-stone-500 mb-1">Overdue</p>
+      <p class="text-2xl font-semibold font-mono
+                {% if overdue_count > 0 %}text-red-600{% else %}text-stone-900{% endif %}">
+        {{ overdue_count }}
+      </p>
+    </a>
+
+  </div>
+
+  {# ── New leads triage ───────────────────────────────────────── #}
+  {% if new_leads %}
+  <div id="new-leads-section" x-data="bulkSelect()">
+
+    {# Bulk action bar — sticky, shown when ≥1 checkbox checked #}
+    <div x-show="selected.length > 0" x-cloak x-transition
+         class="sticky top-14 z-10 mb-3 bg-white border border-stone-200 rounded-lg
+                px-5 py-2.5 flex items-center gap-3 shadow-card">
+      <span class="text-sm font-medium text-stone-700"
+            x-text="`${selected.length} selected`"></span>
+      <button @click="startAll()"
+              class="inline-flex items-center gap-1.5 rounded-md font-medium transition-colors
+                     bg-primary text-white hover:bg-primary-hover px-3 py-2 text-sm">
+        Start cadence for all
+      </button>
+      <button @click="skipAll()"
+              class="inline-flex items-center gap-1.5 rounded-md font-medium transition-colors
+                     bg-white text-stone-700 border border-stone-300 hover:bg-stone-50 px-3 py-2 text-sm">
+        Skip all
+      </button>
+      <button @click="clearSelection()"
+              class="inline-flex items-center gap-1.5 rounded-md font-medium transition-colors
+                     text-stone-700 hover:bg-stone-100 px-3 py-2 text-sm">
+        Clear
+      </button>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-card border border-stone-200">
+      <div class="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+        <h3 class="font-semibold text-sm text-stone-900">New leads to triage</h3>
+        {{ badge_neutral(new_leads | length) }}
+      </div>
+      <div class="divide-y divide-stone-100">
+        {% for lead in new_leads %}
+        <div class="py-3 px-5 flex items-start gap-3">
+          <input type="checkbox"
+                 class="mt-1 rounded border-stone-300 text-primary focus:ring-primary/30"
+                 value="{{ lead.control_number }}"
+                 x-model="selected">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <a href="/leads/{{ lead.control_number }}"
+                 class="font-semibold text-sm hover:text-primary truncate">
+                {{ lead.entity_name }}
+              </a>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="font-mono text-sm text-stone-600">{{ lead.fit_score }}</span>
+                {{ badge_priority(lead.priority) }}
+              </div>
+            </div>
+            <div class="text-sm text-stone-500 mb-1">
+              {{ lead.industry_category or '—' }}
+              {%- if lead.formation_days_ago is not none %} · Filed {{ lead.formation_days_ago }}d ago{%- endif %}
+              {%- if lead.city %} · {{ lead.city }}{%- endif %}
+            </div>
+            {% if lead.organizer_name or lead.phone %}
+            <div class="text-sm text-stone-500 mb-3">
+              {%- if lead.organizer_name %}{{ lead.organizer_name }}{%- endif %}
+              {%- if lead.phone %}
+                {%- if lead.organizer_name %} · {% endif %}
+                <a href="tel:{{ lead.phone }}" class="font-mono hover:text-primary">{{ lead.phone | phone_fmt }}</a>
+              {%- endif %}
+            </div>
+            {% else %}
+            <div class="mb-3"></div>
+            {% endif %}
+            <div class="flex items-center gap-2">
+              <form hx-post="/leads/{{ lead.control_number }}/start"
+                    hx-target="closest .py-3"
+                    hx-swap="outerHTML swap:200ms"
+                    class="inline">
+                {{ btn_primary("Start cadence", type="submit", icon="play", size="sm") }}
+              </form>
+              {{ btn_secondary("View", href="/leads/" ~ lead.control_number, icon="external-link", size="sm") }}
+              <form hx-post="/leads/{{ lead.control_number }}/skip"
+                    hx-target="closest .py-3"
+                    hx-swap="outerHTML swap:200ms"
+                    class="inline">
+                {{ btn_ghost("Skip", type="submit", size="sm") }}
+              </form>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Queue ──────────────────────────────────────────────────── #}
+  <div class="bg-white rounded-lg shadow-card border border-stone-200">
+    <div class="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+      <h3 class="font-semibold text-sm text-stone-900">Queue</h3>
+      {{ badge_neutral(queue | length) }}
+    </div>
+
+    {% if queue %}
+    <div id="queue-list" class="divide-y divide-stone-100">
+      {% for task in queue %}
+      <div class="task-row px-5 py-4"
+           data-task-row
+           data-control-number="{{ task.control_number }}">
+
+        {# Row 1: name + cadence position #}
+        <div class="flex items-center justify-between mb-1">
+          <a href="/leads/{{ task.control_number }}"
+             class="font-semibold text-sm hover:text-primary truncate">
+            {{ task.entity_name }}
+          </a>
+          <span class="font-mono text-xs text-stone-500 shrink-0 ml-2">
+            Day {{ task.cadence_day }}/12
+          </span>
+        </div>
+
+        {# Row 2: industry + action type #}
+        <div class="flex items-center gap-1.5 text-sm text-stone-500 mb-1">
+          <span>{{ task.industry_category or '—' }}</span>
+          <span>·</span>
+          {% if task.task_type == 'call' %}
+            <i data-lucide="phone" class="w-3.5 h-3.5 text-green-600 flex-shrink-0"></i>
+          {% elif task.task_type == 'email' %}
+            <i data-lucide="mail" class="w-3.5 h-3.5 text-blue-600 flex-shrink-0"></i>
+          {% elif task.task_type == 'vm' %}
+            <i data-lucide="voicemail" class="w-3.5 h-3.5 text-purple-600 flex-shrink-0"></i>
+          {% elif task.task_type == 'message' %}
+            <i data-lucide="message-square" class="w-3.5 h-3.5 text-orange-500 flex-shrink-0"></i>
+          {% endif %}
+          <span>{{ task.action_label }}</span>
+          {% if task.is_overdue %}
+          <span class="text-xs text-red-600 font-medium ml-1">· OVERDUE</span>
+          {% endif %}
+        </div>
+
+        {# Row 3: phone + score #}
+        <div class="flex items-center justify-between text-xs text-stone-500 mb-3">
+          {% if task.phone %}
+          <a href="tel:{{ task.phone }}"
+             class="font-mono hover:text-primary">{{ task.phone | phone_fmt }}</a>
+          {% else %}
+          <span class="text-stone-300">No phone</span>
+          {% endif %}
+          <span class="font-mono">Score {{ task.score }}</span>
+        </div>
+
+        {# Row 4: inline outcome buttons #}
+        {% if task.task_type in ('call', 'vm') %}
+        <div class="flex flex-wrap items-center gap-1.5">
+          {% for outcome, label, extra_cls in [
+            ('connected',  'Connected',  'text-green-700 border-green-300 hover:bg-green-50'),
+            ('vm_left',    'VM left',    ''),
+            ('no_answer',  'No answer',  ''),
+            ('wrong_number','Wrong #',   'text-red-700 border-red-300 hover:bg-red-50'),
+            ('bump',       'Bump →1d',   ''),
+          ] %}
+          <form hx-post="/leads/{{ task.control_number }}/complete_task"
+                hx-target="closest .task-row"
+                hx-swap="outerHTML swap:200ms"
+                class="inline">
+            <input type="hidden" name="task_id" value="{{ task.task_id }}">
+            <input type="hidden" name="outcome" value="{{ outcome }}">
+            <button type="submit" data-outcome="{{ outcome }}"
+                    class="inline-flex items-center rounded-md font-medium transition-colors
+                           bg-white border border-stone-300 px-2.5 py-1.5 text-xs
+                           {{ extra_cls or 'text-stone-700 hover:bg-stone-50' }}">
+              {{ label }}
+            </button>
+          </form>
+          {% endfor %}
+
+          {# More dropdown #}
+          <div class="relative" x-data="{ open: false }">
+            <button @click="open = !open"
+                    class="inline-flex items-center rounded-md font-medium transition-colors
+                           bg-white border border-stone-300 text-stone-500 hover:bg-stone-50
+                           px-2.5 py-1.5 text-xs">⋯</button>
+            <div x-show="open" x-cloak @click.outside="open = false"
+                 class="absolute bottom-full left-0 mb-1 bg-white border border-stone-200
+                        rounded-lg shadow-lg py-1 z-20 min-w-[160px]">
+              {% for outcome, label in [('callback_scheduled','Callback scheduled'),('asked_to_remove','Asked to remove')] %}
+              <form hx-post="/leads/{{ task.control_number }}/complete_task"
+                    hx-target="closest .task-row"
+                    hx-swap="outerHTML swap:200ms">
+                <input type="hidden" name="task_id" value="{{ task.task_id }}">
+                <input type="hidden" name="outcome" value="{{ outcome }}">
+                <button type="submit"
+                        class="w-full text-left px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors">
+                  {{ label }}
+                </button>
+              </form>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        {% elif task.task_type == 'email' %}
+        <div class="flex flex-wrap items-center gap-1.5">
+          {% for outcome, label, extra_cls in [
+            ('sent',    'Mark sent', 'text-blue-700 border-blue-300 hover:bg-blue-50'),
+            ('replied', 'Replied',   'text-green-700 border-green-300 hover:bg-green-50'),
+            ('bounced', 'Bounced',   'text-red-700 border-red-300 hover:bg-red-50'),
+          ] %}
+          <form hx-post="/leads/{{ task.control_number }}/complete_task"
+                hx-target="closest .task-row"
+                hx-swap="outerHTML swap:200ms"
+                class="inline">
+            <input type="hidden" name="task_id" value="{{ task.task_id }}">
+            <input type="hidden" name="outcome" value="{{ outcome }}">
+            <button type="submit" data-outcome="{{ outcome }}"
+                    class="inline-flex items-center rounded-md font-medium transition-colors
+                           bg-white border border-stone-300 px-2.5 py-1.5 text-xs
+                           {{ extra_cls or 'text-stone-700 hover:bg-stone-50' }}">
+              {{ label }}
+            </button>
+          </form>
+          {% endfor %}
+          {% if task.filer_email %}
+          <a href="mailto:{{ task.filer_email }}"
+             hx-post="/leads/{{ task.control_number }}/email_opened"
+             hx-trigger="click"
+             hx-swap="none"
+             class="inline-flex items-center gap-1 rounded-md font-medium transition-colors
+                    bg-white border border-stone-300 text-stone-700 hover:bg-stone-50
+                    px-2.5 py-1.5 text-xs">
+            <i data-lucide="external-link" class="w-3 h-3"></i>Open in Mail
+          </a>
+          {% endif %}
+          <form hx-post="/leads/{{ task.control_number }}/complete_task"
+                hx-target="closest .task-row"
+                hx-swap="outerHTML swap:200ms"
+                class="inline">
+            <input type="hidden" name="task_id" value="{{ task.task_id }}">
+            <input type="hidden" name="outcome" value="bump">
+            <button type="submit" data-outcome="bump"
+                    class="inline-flex items-center rounded-md font-medium transition-colors
+                           bg-white border border-stone-300 text-stone-700 hover:bg-stone-50
+                           px-2.5 py-1.5 text-xs">Bump →1d</button>
+          </form>
+        </div>
+        {% else %}
+        {# vm / message / log — generic done #}
+        <div>
+          <form hx-post="/leads/{{ task.control_number }}/complete_task"
+                hx-target="closest .task-row"
+                hx-swap="outerHTML swap:200ms"
+                class="inline">
+            <input type="hidden" name="task_id" value="{{ task.task_id }}">
+            <input type="hidden" name="outcome" value="done">
+            <button type="submit" data-outcome="done"
+                    class="inline-flex items-center rounded-md font-medium transition-colors
+                           bg-white border border-stone-300 text-stone-700 hover:bg-stone-50
+                           px-2.5 py-1.5 text-xs">Mark done</button>
+          </form>
+        </div>
+        {% endif %}
+
+      </div>
+      {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="px-5 py-4">
+      {{ empty_state("inbox", "Queue is clear", "No tasks due today. Start a cadence on a new lead above.") }}
+    </div>
+    {% endif %}
+  </div>
+
+  {# ── Done today accordion ───────────────────────────────────── #}
+  {% if done_today %}
+  <div x-data="{ open: false }"
+       class="bg-white border border-stone-200 rounded-lg">
+    <button @click="open = !open"
+            class="w-full px-5 py-3 flex items-center justify-between text-left">
+      <span class="font-semibold text-sm text-stone-900">
+        Done today ({{ done_today | length }})
+      </span>
+      <i data-lucide="chevron-down"
+         :class="{ 'rotate-180': open }"
+         class="w-4 h-4 text-stone-400 transition-transform duration-200"></i>
+    </button>
+    <div x-show="open" x-cloak class="border-t border-stone-100">
+      {% for activity in done_today %}
+      <div class="flex items-center gap-3 px-5 py-2 text-sm
+                  border-b border-stone-50 last:border-0">
+        <i data-lucide="check" class="w-4 h-4 text-green-600 flex-shrink-0"></i>
+        <span class="font-mono text-xs text-stone-400 w-20 flex-shrink-0">
+          {{ activity.completed_at | time_fmt }}
+        </span>
+        <span class="flex-1 truncate font-medium text-stone-700">{{ activity.entity_name }}</span>
+        <span class="text-stone-500 text-xs shrink-0">
+          {{ activity.action_label }} → {{ activity.outcome or '—' }}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+{# ── Shortcuts modal (outside scroll container, fixed) ──────────── #}
+<div x-data="{ open: false }"
+     @open-shortcuts.document="open = true"
+     @keydown.escape.window="open = false">
+  <div x-show="open" x-cloak
+       class="fixed inset-0 bg-stone-900/40 z-50 flex items-center justify-center"
+       @click.self="open = false">
+    <div class="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold">Keyboard shortcuts</h2>
+        <button @click="open = false" class="text-stone-400 hover:text-stone-600">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <dl class="space-y-2.5 text-sm">
+        <div class="flex justify-between">
+          <dt class="text-stone-600">Next / previous lead</dt>
+          <dd class="flex gap-1"><kbd>j</kbd> <kbd>k</kbd></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-stone-600">Open lead detail</dt>
+          <dd><kbd>Enter</kbd></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-stone-600">Connected</dt><dd><kbd>1</kbd></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-stone-600">VM left</dt><dd><kbd>2</kbd></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-stone-600">No answer</dt><dd><kbd>3</kbd></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-stone-600">Wrong number</dt><dd><kbd>4</kbd></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-stone-600">Bump (defer 1 day)</dt><dd><kbd>5</kbd></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-stone-600">Show shortcuts</dt><dd><kbd>?</kbd></dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+</div>
+
+{# ── Status bar ─────────────────────────────────────────────────── #}
+<div class="fixed bottom-0 left-[220px] right-0 h-9 bg-white border-t border-stone-200
+            px-6 flex items-center justify-between text-xs text-stone-500 z-40">
+  <span>
+    <span class="font-mono text-stone-900">{{ queue | length }}</span> tasks remaining
+  </span>
+  <div class="flex items-center gap-4">
+    <span><kbd>j</kbd> <kbd>k</kbd> navigate</span>
+    <span><kbd>1</kbd>–<kbd>5</kbd> outcomes</span>
+    <button @click="$dispatch('open-shortcuts')"
+            class="hover:text-stone-900 transition-colors">
+      <kbd>?</kbd> shortcuts
+    </button>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<style>
+  kbd {
+    display: inline-block;
+    padding: 1px 6px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px;
+    background: #f5f5f4;
+    border: 1px solid #e7e5e4;
+    border-radius: 4px;
+    box-shadow: 0 1px 0 #d6d3d1;
+  }
+  .task-row { transition: opacity 200ms ease-out; }
+  .task-row.htmx-swapping { opacity: 0; }
+</style>
+<script>
+function todayKeyboard() {
+  return {
+    focusIndex: 0,
+    rows: [],
+    init() {
+      this.rows = Array.from(document.querySelectorAll('[data-task-row]'));
+      if (this.rows.length) this.focusRow(0);
+    },
+    focusRow(i) {
+      if (!this.rows.length) return;
+      i = Math.max(0, Math.min(i, this.rows.length - 1));
+      this.rows.forEach(r => r.classList.remove('ring-2', 'ring-primary'));
+      this.rows[i].classList.add('ring-2', 'ring-primary');
+      this.rows[i].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      this.focusIndex = i;
+    },
+    handleKey(e) {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      if (e.metaKey || e.ctrlKey) return;
+      if (e.key === 'j') { e.preventDefault(); this.focusRow(this.focusIndex + 1); }
+      else if (e.key === 'k') { e.preventDefault(); this.focusRow(this.focusIndex - 1); }
+      else if (e.key === 'Enter') {
+        const cn = this.rows[this.focusIndex]?.dataset.controlNumber;
+        if (cn) window.location.href = `/leads/${cn}`;
+      }
+      else if (e.key === '1') this.triggerOutcome('connected');
+      else if (e.key === '2') this.triggerOutcome('vm_left');
+      else if (e.key === '3') this.triggerOutcome('no_answer');
+      else if (e.key === '4') this.triggerOutcome('wrong_number');
+      else if (e.key === '5') this.triggerOutcome('bump');
+      else if (e.key === '?') document.dispatchEvent(new CustomEvent('open-shortcuts'));
+    },
+    triggerOutcome(outcome) {
+      const btn = this.rows[this.focusIndex]?.querySelector(`[data-outcome="${outcome}"]`);
+      if (btn) btn.click();
+    },
+  };
+}
+
+function bulkSelect() {
+  return {
+    selected: [],
+    clearSelection() { this.selected = []; },
+    startAll() {
+      if (!this.selected.length) return;
+      fetch('/leads/bulk_start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'HX-Request': 'true',
+        },
+        body: 'control_numbers=' + encodeURIComponent(this.selected.join(',')),
+      }).then(() => window.location.reload());
+    },
+    skipAll() {
+      if (!this.selected.length) return;
+      fetch('/leads/bulk_skip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'HX-Request': 'true',
+        },
+        body: 'control_numbers=' + encodeURIComponent(this.selected.join(',')),
+      }).then(() => window.location.reload());
+    },
+  };
+}
+
+// After HTMX removes a row, re-sync keyboard focus
+document.body.addEventListener('htmx:afterSwap', () => {
+  const el = document.querySelector('[x-data="todayKeyboard()"]');
+  if (!el) return;
+  const comp = Alpine.$data(el);
+  if (!comp) return;
+  comp.rows = Array.from(document.querySelectorAll('[data-task-row]'));
+  comp.focusRow(Math.min(comp.focusIndex, comp.rows.length - 1));
+  // Re-init Lucide for any newly swapped-in icons
+  if (window.lucide) lucide.createIcons();
+});
+</script>
 {% endblock %}

@@ -33,6 +33,32 @@ def inject_notifications():
         count, notifs = 0, []
     return {"notif_count": count, "notif_items": notifs}
 
+
+@app.template_filter("phone_fmt")
+def phone_fmt(value: str) -> str:
+    """Format a phone number as (NXX) NXX-XXXX."""
+    if not value:
+        return ""
+    digits = re.sub(r"\D", "", str(value))
+    if digits.startswith("1") and len(digits) == 11:
+        digits = digits[1:]
+    if len(digits) == 10:
+        return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+    return value
+
+
+@app.template_filter("time_fmt")
+def time_fmt(value: str) -> str:
+    """Format a timestamp string as '10:34 AM'."""
+    if not value:
+        return ""
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return dt.strftime("%-I:%M %p")
+    except Exception:
+        return str(value)[:5]
+
+
 # CADENCE, CALL_OUTCOMES, EMAIL_OUTCOMES, FINAL_OUTCOMES imported from src.cadence above
 
 # ---------------------------------------------------------------------------
@@ -419,54 +445,118 @@ def _today_tasks(conn) -> list[dict]:
 
 @app.route("/")
 def dashboard():
+    # Optional date param for catching up (defaults to today)
+    date_param = request.args.get("date", "")
+    try:
+        selected = date.fromisoformat(date_param)
+    except ValueError:
+        selected = date.today()
+    selected_str  = str(selected)
+    today_str     = str(date.today())
+
+    active_filter = request.args.get("filter", "")
+    if active_filter not in ("overdue", "new", ""):
+        active_filter = ""
+
     conn = db()
     _seed_templates(conn)
-    tasks    = _today_tasks(conn)
-    overdue  = [t for t in tasks if t["due_date"] < str(date.today())]
-    due_today = [t for t in tasks if t["due_date"] == str(date.today())]
 
-    stats = {
-        "total_leads": conn.execute(
-            "SELECT COUNT(*) FROM leads WHERE priority != 'SKIP'"
-        ).fetchone()[0],
-        "in_cadence": conn.execute(
-            "SELECT COUNT(DISTINCT control_number) FROM cadence_tasks WHERE status='pending'"
-        ).fetchone()[0],
-        "hot": conn.execute(
-            "SELECT COUNT(*) FROM leads WHERE priority='HOT'"
-        ).fetchone()[0],
-        "warm": conn.execute(
-            "SELECT COUNT(*) FROM leads WHERE priority='WARM'"
-        ).fetchone()[0],
-        "converted": conn.execute(
-            "SELECT COUNT(*) FROM leads WHERE outreach_status='CONVERTED'"
-        ).fetchone()[0],
-    }
-
-    # New leads added today by the daily pipeline (HOT/WARM only, no cadence yet)
-    today_str = str(date.today())
-    new_leads_rows = conn.execute(
+    # ── Queue: pending tasks due on or before selected date ──────────
+    rows = conn.execute(
         """
-        SELECT l.*
+        SELECT ct.id AS task_id, ct.control_number, ct.step, ct.cadence_day,
+               ct.task_type, ct.label AS action_label, ct.due_date,
+               l.entity_name, l.industry_category, l.priority, l.fit_score,
+               l.filer_phone, l.business_phone, l.owner_personal_phone,
+               l.filer_email, l.principal_office_address, l.organizer_name
+        FROM cadence_tasks ct
+        JOIN leads l ON ct.control_number = l.control_number
+        WHERE ct.status = 'pending' AND ct.due_date <= ?
+        ORDER BY ct.due_date ASC, l.fit_score DESC, ct.step
+        """,
+        (selected_str,),
+    ).fetchall()
+
+    all_tasks = []
+    for r in rows:
+        t = dict(r)
+        t["is_overdue"]  = t["due_date"] < today_str
+        t["total_steps"] = 12
+        t["phone"]       = _best_phone(t)
+        t["score"]       = t.pop("fit_score", 0) or 0
+        all_tasks.append(t)
+
+    overdue_count   = sum(1 for t in all_tasks if t["is_overdue"])
+    due_today_count = sum(1 for t in all_tasks if t["due_date"] == today_str)
+
+    if active_filter == "overdue":
+        queue = [t for t in all_tasks if t["is_overdue"]]
+    else:
+        queue = all_tasks
+
+    # ── New leads: HOT/WARM with no cadence started ──────────────────
+    new_rows = conn.execute(
+        """
+        SELECT l.control_number, l.entity_name, l.industry_category,
+               l.formation_date, l.fit_score, l.priority,
+               l.filer_phone, l.business_phone, l.owner_personal_phone,
+               l.filer_email, l.organizer_name, l.principal_office_address
         FROM leads l
         LEFT JOIN cadence_tasks ct ON ct.control_number = l.control_number
         WHERE l.priority IN ('HOT', 'WARM')
-          AND date(l.first_seen) = ?
+          AND (l.outreach_status IS NULL
+               OR l.outreach_status NOT IN ('IN_CADENCE','CONVERTED','DEAD',
+                                            'SKIPPED','SKIP','NURTURE'))
           AND ct.id IS NULL
         ORDER BY l.fit_score DESC
         """,
+    ).fetchall()
+
+    new_leads = []
+    for r in new_rows:
+        lead = dict(r)
+        lead["phone"] = _best_phone(lead)
+        lead["city"]  = _city_from_address(lead.get("principal_office_address") or "")
+        try:
+            formed = date.fromisoformat(lead["formation_date"])
+            lead["formation_days_ago"] = (date.today() - formed).days
+        except Exception:
+            lead["formation_days_ago"] = None
+        new_leads.append(lead)
+
+    new_leads_count = len(new_leads)
+
+    # When filter=new, collapse the queue to highlight triage
+    if active_filter == "new":
+        queue = []
+
+    # ── Done today ───────────────────────────────────────────────────
+    done_rows = conn.execute(
+        """
+        SELECT ct.id, ct.control_number, ct.step, ct.task_type,
+               ct.label AS action_label, ct.outcome, ct.completed_at,
+               l.entity_name
+        FROM cadence_tasks ct
+        JOIN leads l ON ct.control_number = l.control_number
+        WHERE ct.status = 'done' AND date(ct.completed_at) = ?
+        ORDER BY ct.completed_at DESC
+        """,
         (today_str,),
     ).fetchall()
-    new_leads = [dict(r) for r in new_leads_rows]
+    done_today = [dict(r) for r in done_rows]
 
     conn.close()
     return render_template(
         "dashboard.html",
-        overdue=overdue,
-        due_today=due_today,
-        stats=stats,
+        due_today_count=due_today_count,
+        new_leads_count=new_leads_count,
+        overdue_count=overdue_count,
         new_leads=new_leads,
-        today=date.today().strftime("%A, %B %d"),
+        queue=queue,
+        done_today=done_today,
+        selected_date=selected_str,
+        selected_date_display=selected.strftime("%A, %B %d"),
+        active_filter=active_filter,
     )
 
 
@@ -623,6 +713,8 @@ def start_cadence(cn: str):
     )
     conn.commit()
     conn.close()
+    if request.headers.get("HX-Request"):
+        return "", 200
     return redirect(url_for("lead_detail", cn=cn))
 
 
@@ -634,6 +726,7 @@ def complete_task(cn: str):
     task_id = int(raw_task_id)
     outcome = request.form.get("outcome", "")
     notes   = request.form.get("notes", "")
+    is_htmx = bool(request.headers.get("HX-Request"))
 
     conn = db()
     task = conn.execute(
@@ -642,27 +735,35 @@ def complete_task(cn: str):
     ).fetchone()
 
     if task:
-        conn.execute(
-            """UPDATE cadence_tasks
-               SET status='done', completed_at=CURRENT_TIMESTAMP,
-                   outcome=?, notes=?
-               WHERE id=?""",
-            (outcome, notes, task_id),
-        )
-        conn.execute(
-            """INSERT INTO outreach_log
-               (control_number, step, cadence_day, task_type, outcome, notes)
-               VALUES (?,?,?,?,?,?)""",
-            (cn, task["step"], task["cadence_day"], task["task_type"], outcome, notes),
-        )
-        # Advance cadence_step
-        conn.execute(
-            "UPDATE leads SET cadence_step=?, last_updated=CURRENT_TIMESTAMP WHERE control_number=?",
-            (task["step"] + 1, cn),
-        )
+        if outcome == "bump":
+            # Defer task by 1 day without completing it
+            conn.execute(
+                "UPDATE cadence_tasks SET due_date=date(due_date, '+1 day') WHERE id=?",
+                (task_id,),
+            )
+        else:
+            conn.execute(
+                """UPDATE cadence_tasks
+                   SET status='done', completed_at=CURRENT_TIMESTAMP,
+                       outcome=?, notes=?
+                   WHERE id=?""",
+                (outcome, notes, task_id),
+            )
+            conn.execute(
+                """INSERT INTO outreach_log
+                   (control_number, step, cadence_day, task_type, outcome, notes)
+                   VALUES (?,?,?,?,?,?)""",
+                (cn, task["step"], task["cadence_day"], task["task_type"], outcome, notes),
+            )
+            conn.execute(
+                "UPDATE leads SET cadence_step=?, last_updated=CURRENT_TIMESTAMP WHERE control_number=?",
+                (task["step"] + 1, cn),
+            )
     conn.commit()
     conn.close()
 
+    if is_htmx:
+        return "", 200
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({"ok": True})
     return redirect(url_for("lead_detail", cn=cn))
@@ -698,7 +799,128 @@ def set_outcome(cn: str):
     )
     conn.commit()
     conn.close()
+    if request.headers.get("HX-Request"):
+        return "", 200
     return redirect(url_for("lead_detail", cn=cn))
+
+
+# ---------------------------------------------------------------------------
+# Routes — Per-lead skip + email-opened (Today screen)
+# ---------------------------------------------------------------------------
+
+@app.route("/leads/<cn>/skip", methods=["POST"])
+def skip_lead(cn: str):
+    if not re.match(r'^[A-Za-z0-9_\-]{1,40}$', cn):
+        return "Invalid control number", 400
+    conn = db()
+    exists = conn.execute("SELECT 1 FROM leads WHERE control_number=?", (cn,)).fetchone()
+    if not exists:
+        conn.close()
+        return "Lead not found", 404
+    conn.execute(
+        "UPDATE cadence_tasks SET status='skipped' WHERE control_number=? AND status='pending'",
+        (cn,),
+    )
+    conn.execute(
+        """UPDATE leads SET outreach_status='SKIPPED', last_updated=CURRENT_TIMESTAMP
+           WHERE control_number=?""",
+        (cn,),
+    )
+    conn.execute(
+        "INSERT INTO outreach_log (control_number, task_type, outcome) VALUES (?, 'outcome', 'skipped')",
+        (cn,),
+    )
+    conn.commit()
+    conn.close()
+    if request.headers.get("HX-Request"):
+        return "", 200
+    return redirect(request.referrer or url_for("dashboard"))
+
+
+@app.route("/leads/<cn>/email_opened", methods=["POST"])
+def email_opened(cn: str):
+    if not re.match(r'^[A-Za-z0-9_\-]{1,40}$', cn):
+        return "Invalid control number", 400
+    conn = db()
+    exists = conn.execute("SELECT 1 FROM leads WHERE control_number=?", (cn,)).fetchone()
+    if not exists:
+        conn.close()
+        return "Lead not found", 404
+    conn.execute(
+        "INSERT INTO outreach_log (control_number, task_type, outcome) VALUES (?, 'email', 'email_opened_in_client')",
+        (cn,),
+    )
+    conn.commit()
+    conn.close()
+    return "", 200
+
+
+# ---------------------------------------------------------------------------
+# Routes — Bulk lead actions (Today screen triage)
+# ---------------------------------------------------------------------------
+
+@app.route("/leads/bulk_start", methods=["POST"])
+def bulk_start():
+    raw = request.form.get("control_numbers", "")
+    cns = [
+        cn.strip() for cn in raw.split(",")
+        if re.match(r'^[A-Za-z0-9_\-]{1,40}$', cn.strip())
+    ]
+    if not cns:
+        return "No valid control numbers", 400
+    today = date.today()
+    conn = db()
+    for cn in cns:
+        conn.execute("DELETE FROM cadence_tasks WHERE control_number=?", (cn,))
+        for touch in CADENCE:
+            due = today + timedelta(days=touch["day"] - 1)
+            conn.execute(
+                """INSERT INTO cadence_tasks
+                   (control_number, step, cadence_day, task_type, label, due_date)
+                   VALUES (?,?,?,?,?,?)""",
+                (cn, touch["step"], touch["day"], touch["type"], touch["label"], str(due)),
+            )
+        conn.execute(
+            """UPDATE leads SET outreach_status='IN_CADENCE', cadence_start_date=?,
+               cadence_step=1, last_updated=CURRENT_TIMESTAMP WHERE control_number=?""",
+            (str(today), cn),
+        )
+    conn.commit()
+    conn.close()
+    if request.headers.get("HX-Request"):
+        return "", 200
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/leads/bulk_skip", methods=["POST"])
+def bulk_skip():
+    raw = request.form.get("control_numbers", "")
+    cns = [
+        cn.strip() for cn in raw.split(",")
+        if re.match(r'^[A-Za-z0-9_\-]{1,40}$', cn.strip())
+    ]
+    if not cns:
+        return "No valid control numbers", 400
+    conn = db()
+    for cn in cns:
+        conn.execute(
+            "UPDATE cadence_tasks SET status='skipped' WHERE control_number=? AND status='pending'",
+            (cn,),
+        )
+        conn.execute(
+            """UPDATE leads SET outreach_status='SKIPPED', last_updated=CURRENT_TIMESTAMP
+               WHERE control_number=?""",
+            (cn,),
+        )
+        conn.execute(
+            "INSERT INTO outreach_log (control_number, task_type, outcome) VALUES (?, 'outcome', 'skipped')",
+            (cn,),
+        )
+    conn.commit()
+    conn.close()
+    if request.headers.get("HX-Request"):
+        return "", 200
+    return redirect(url_for("dashboard"))
 
 
 # ---------------------------------------------------------------------------
