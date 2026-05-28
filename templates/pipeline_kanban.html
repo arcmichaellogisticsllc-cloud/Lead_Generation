@@ -1,197 +1,308 @@
 {% extends "base.html" %}
 {% block title %}Pipeline — GA Leads{% endblock %}
+
+{% block page_actions %}
+<a href="/leads"
+   class="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-md font-medium transition-colors bg-white text-stone-700 border border-stone-300 hover:bg-stone-50">
+  <i data-lucide="list" class="w-4 h-4 flex-shrink-0"></i>Table
+</a>
+<a href="/pipeline"
+   class="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-md font-medium transition-colors bg-stone-800 text-white hover:bg-stone-900">
+  <i data-lucide="kanban" class="w-4 h-4 flex-shrink-0"></i>Kanban
+</a>
+{% endblock %}
+
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h4 class="fw-bold mb-0">Pipeline</h4>
-  <div class="d-flex gap-2 align-items-center">
-    <a href="/leads" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-table me-1"></i>Table
-    </a>
-    <a href="/pipeline" class="btn btn-sm btn-dark">
-      <i class="bi bi-kanban me-1"></i>Kanban
-    </a>
-  </div>
-</div>
+{# ── Stage colour mapping (Tailwind classes — must appear as full strings) ── #}
+{% set s_text = {
+  'new':'text-stone-600','day1':'text-blue-600','day3':'text-violet-600',
+  'day6':'text-orange-600','day9':'text-amber-600','day12':'text-red-600','closed':'text-green-600'
+} %}
+{% set s_bg = {
+  'new':'bg-stone-100','day1':'bg-blue-50','day3':'bg-violet-50',
+  'day6':'bg-orange-50','day9':'bg-amber-50','day12':'bg-red-50','closed':'bg-green-50'
+} %}
+{% set s_dot = {
+  'new':'bg-stone-400','day1':'bg-blue-500','day3':'bg-violet-500',
+  'day6':'bg-orange-500','day9':'bg-amber-500','day12':'bg-red-500','closed':'bg-green-500'
+} %}
 
-<!-- Stage summary strip -->
-<div class="d-flex gap-2 mb-3 flex-wrap">
+<div x-data="kanban()">
+
+{# ── Stage summary strip ─────────────────────────────────────── #}
+<div class="flex gap-2 mb-5 flex-wrap">
   {% for stage in stages_def %}
-  {% set leads = stages[stage.key] %}
-  {% set n_overdue = leads | selectattr('_overdue') | list | length %}
-  {% set n_stale   = leads | selectattr('_stale')   | list | length %}
-  <div class="badge rounded-pill px-3 py-2 d-flex align-items-center gap-2"
-       style="background:{{ stage.color }}22; color:{{ stage.color }}; border:1px solid {{ stage.color }}44">
-    <span class="fw-bold">{{ stage.label }}</span>
-    <span class="fw-normal">{{ leads | length }}</span>
-    {% if n_overdue %}<span class="badge bg-danger ms-1">{{ n_overdue }} overdue</span>{% endif %}
-    {% if n_stale %}<span class="badge bg-warning text-dark ms-1">{{ n_stale }} stale</span>{% endif %}
+  {% set col = stages[stage.key] %}
+  {% set n_overdue = col | selectattr('_overdue') | list | length %}
+  {% set n_stale   = col | selectattr('_stale')   | list | length %}
+  <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium
+              {{ s_text[stage.key] }} {{ s_bg[stage.key] }}">
+    <span class="w-1.5 h-1.5 rounded-full {{ s_dot[stage.key] }}"></span>
+    <span class="font-semibold">{{ stage.label }}</span>
+    <span class="font-mono">{{ col | length }}</span>
+    {% if n_overdue %}
+    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">
+      {{ n_overdue }} overdue
+    </span>
+    {% endif %}
+    {% if n_stale %}
+    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">
+      {{ n_stale }} stale
+    </span>
+    {% endif %}
   </div>
   {% endfor %}
 </div>
 
-<!-- Kanban board -->
-<div class="d-flex gap-3 pb-3 overflow-auto" style="align-items:flex-start; min-height:70vh">
+{# ── Kanban board (horizontal scroll) ───────────────────────── #}
+<div class="flex gap-3 overflow-x-auto pb-6 items-start"
+     style="-webkit-overflow-scrolling:touch">
   {% for stage in stages_def %}
   {% set col_leads = stages[stage.key] %}
-  <div class="flex-shrink-0" style="width:230px">
 
-    <!-- Column header -->
-    <div class="d-flex justify-content-between align-items-center mb-2 px-1">
-      <div>
-        <span class="fw-bold small" style="color:{{ stage.color }}">{{ stage.label }}</span>
-        <span class="text-muted small ms-1">{{ stage.sublabel }}</span>
+  <div class="flex-shrink-0 w-[216px]">
+
+    {# Column header #}
+    <div class="flex items-center justify-between mb-2 px-1">
+      <div class="flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full {{ s_dot[stage.key] }}"></span>
+        <span class="text-xs font-semibold {{ s_text[stage.key] }}">{{ stage.label }}</span>
+        <span class="text-[10px] text-stone-400">{{ stage.sublabel }}</span>
       </div>
-      <span class="badge rounded-pill bg-secondary">{{ col_leads | length }}</span>
+      <span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-500">
+        {{ col_leads | length }}
+      </span>
     </div>
 
-    <!-- Cards -->
-    <div class="vstack gap-2">
+    {# Cards #}
+    <div class="space-y-2">
       {% for lead in col_leads %}
-      {% set border_class = 'border-danger' if lead._overdue else ('border-warning' if lead._stale else '') %}
-      <div class="card task-card p-0 {{ 'border ' + border_class if border_class else '' }}"
-           style="font-size:.82rem">
-        <div class="card-body p-2">
 
-          <!-- Priority + name -->
-          <div class="d-flex justify-content-between align-items-start mb-1">
-            <span class="badge badge-{{ lead.priority }} text-white">{{ lead.priority }}</span>
-            <div class="d-flex align-items-center gap-1">
-              {% if lead._overdue %}
-              <span class="badge bg-danger" title="Task overdue">!</span>
-              {% elif lead._stale %}
-              <span class="badge bg-warning text-dark" title="No activity recently">~</span>
-              {% endif %}
-              {% if stage.key != 'closed' %}
-              <input type="checkbox" class="kanban-select form-check-input mt-0"
-                     data-cn="{{ lead.control_number }}" style="cursor:pointer">
-              {% endif %}
-            </div>
-          </div>
+      {# Card accent: overdue → red border, stale → amber, normal → stone #}
+      {% if lead._overdue %}
+        {% set card_cls = "border border-red-200 bg-red-50/20" %}
+      {% elif lead._stale %}
+        {% set card_cls = "border border-amber-200 bg-amber-50/20" %}
+      {% else %}
+        {% set card_cls = "border border-stone-200 bg-white" %}
+      {% endif %}
 
-          <div class="fw-semibold text-truncate" title="{{ lead.entity_name }}">
-            {{ lead.entity_name }}
-          </div>
-          <div class="text-muted text-truncate" style="font-size:.78rem">
-            {{ lead.industry_category or '—' }}
-          </div>
+      <div class="rounded-lg shadow-card {{ card_cls }} p-2.5 text-[11px] leading-snug">
 
-          <!-- Organizer + phone -->
-          {% if lead.organizer_name %}
-          <div class="text-muted mt-1 text-truncate" style="font-size:.78rem">
-            {{ lead.organizer_name.split()[0] if lead.organizer_name else '' }}
-            {% if lead.filer_phone %}
-            · <a href="tel:{{ lead.filer_phone }}" class="text-muted">{{ lead.filer_phone }}</a>
+        {# Row 1: priority + flags + checkbox #}
+        <div class="flex items-center justify-between mb-1.5 gap-1">
+          {# Priority badge #}
+          {% if lead.priority == 'HOT' %}
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-700">HOT</span>
+          {% elif lead.priority == 'WARM' %}
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700">WARM</span>
+          {% elif lead.priority == 'COLD' %}
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-cyan-50 text-cyan-700">COLD</span>
+          {% endif %}
+
+          <div class="flex items-center gap-1 ml-auto">
+            {# Overdue / stale indicator #}
+            {% if lead._overdue %}
+            <span class="w-4 h-4 rounded-full bg-red-100 text-red-600 flex items-center justify-center"
+                  title="Task overdue">
+              <i data-lucide="alert-circle" class="w-2.5 h-2.5"></i>
+            </span>
+            {% elif lead._stale %}
+            <span class="w-4 h-4 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center"
+                  title="No activity in 3+ days">
+              <i data-lucide="clock" class="w-2.5 h-2.5"></i>
+            </span>
+            {% endif %}
+
+            {# Batch checkbox (hidden for closed) #}
+            {% if stage.key != 'closed' %}
+            <input type="checkbox"
+                   @change="toggle('{{ lead.control_number }}')"
+                   class="w-3.5 h-3.5 cursor-pointer rounded accent-primary"
+                   title="Select">
             {% endif %}
           </div>
-          {% endif %}
-
-          <!-- Next task -->
-          {% if lead._next_task_label %}
-          <div class="mt-2 d-flex align-items-center gap-1">
-            <span class="step-{{ lead._next_task_type }}">
-              {% if lead._next_task_type == 'call' %}📞
-              {% elif lead._next_task_type == 'email' %}✉️
-              {% elif lead._next_task_type == 'vm' %}📱
-              {% elif lead._next_task_type == 'message' %}💬
-              {% else %}📋{% endif %}
-            </span>
-            <span class="text-truncate" style="font-size:.78rem">{{ lead._next_task_label }}</span>
-          </div>
-          {% if lead._next_due %}
-          <div class="text-muted" style="font-size:.75rem">
-            Due {{ lead._next_due }}
-            {% if lead._overdue %}<span class="text-danger fw-bold"> OVERDUE</span>{% endif %}
-          </div>
-          {% endif %}
-          {% elif stage.key == 'new' %}
-          <div class="mt-2">
-            <form method="POST" action="/leads/{{ lead.control_number }}/start">
-              <button class="btn btn-xs btn-dark w-100" style="font-size:.75rem;padding:2px 6px">
-                🚀 Start Cadence
-              </button>
-            </form>
-          </div>
-          {% elif stage.key == 'closed' %}
-          <div class="mt-1">
-            <span class="badge bg-secondary">{{ lead.outreach_status }}</span>
-          </div>
-          {% endif %}
-
-          <!-- Score + open link -->
-          <div class="d-flex justify-content-between align-items-center mt-2">
-            <span class="text-muted" style="font-size:.75rem">Score {{ lead.fit_score or 0 }}</span>
-            <a href="/leads/{{ lead.control_number }}"
-               class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size:.75rem">
-              Open →
-            </a>
-          </div>
-
         </div>
+
+        {# Entity name #}
+        <div class="font-semibold text-stone-900 truncate" title="{{ lead.entity_name }}">
+          {{ lead.entity_name }}
+        </div>
+
+        {# Industry #}
+        {% if lead.industry_category %}
+        <div class="text-stone-400 truncate mt-0.5">{{ lead.industry_category }}</div>
+        {% endif %}
+
+        {# Organizer + phone #}
+        {% if lead.organizer_name or lead.filer_phone %}
+        <div class="text-stone-400 truncate mt-1 flex items-center gap-1">
+          {% if lead.organizer_name %}
+          <span>{{ lead.organizer_name.split()[0] }}</span>
+          {% endif %}
+          {% if lead.filer_phone %}
+          {% if lead.organizer_name %}<span class="text-stone-200">·</span>{% endif %}
+          <a href="tel:{{ lead.filer_phone }}"
+             class="font-mono hover:text-stone-600 transition-colors truncate">
+            {{ lead.filer_phone | phone_fmt }}
+          </a>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {# Next task (in-cadence leads) #}
+        {% if lead._next_task_label %}
+        <div class="flex items-center gap-1 mt-2 text-stone-600">
+          {% if lead._next_task_type == 'call' %}
+          <i data-lucide="phone" class="w-3 h-3 flex-shrink-0"></i>
+          {% elif lead._next_task_type == 'email' %}
+          <i data-lucide="mail" class="w-3 h-3 flex-shrink-0"></i>
+          {% elif lead._next_task_type == 'vm' %}
+          <i data-lucide="voicemail" class="w-3 h-3 flex-shrink-0"></i>
+          {% elif lead._next_task_type == 'message' %}
+          <i data-lucide="message-square" class="w-3 h-3 flex-shrink-0"></i>
+          {% else %}
+          <i data-lucide="check-square" class="w-3 h-3 flex-shrink-0"></i>
+          {% endif %}
+          <span class="truncate">{{ lead._next_task_label }}</span>
+        </div>
+        {% if lead._next_due %}
+        <div class="mt-0.5 {% if lead._overdue %}text-red-600 font-semibold{% else %}text-stone-400{% endif %}">
+          Due {{ lead._next_due }}{% if lead._overdue %} — OVERDUE{% endif %}
+        </div>
+        {% endif %}
+
+        {# New stage — no cadence yet #}
+        {% elif stage.key == 'new' %}
+        <div class="mt-2">
+          <form method="POST" action="/leads/{{ lead.control_number }}/start">
+            <button type="submit"
+                    class="w-full inline-flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-stone-800 text-white hover:bg-stone-900 transition-colors">
+              <i data-lucide="zap" class="w-2.5 h-2.5"></i>Start Cadence
+            </button>
+          </form>
+        </div>
+
+        {# Closed leads — show final status #}
+        {% elif stage.key == 'closed' %}
+        <div class="mt-1.5">
+          {% set st = lead.outreach_status | lower %}
+          {% if st == 'converted' %}
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700">
+            <i data-lucide="check-circle" class="w-2.5 h-2.5"></i>Converted
+          </span>
+          {% elif st == 'nurture' %}
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700">
+            <i data-lucide="refresh-cw" class="w-2.5 h-2.5"></i>Nurture
+          </span>
+          {% elif st == 'dead' %}
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-stone-100 text-stone-500">
+            <i data-lucide="x-circle" class="w-2.5 h-2.5"></i>Dead
+          </span>
+          {% elif st == 'no_contact' %}
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-stone-100 text-stone-500">
+            <i data-lucide="ghost" class="w-2.5 h-2.5"></i>No Contact
+          </span>
+          {% else %}
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-stone-100 text-stone-500">
+            {{ lead.outreach_status }}
+          </span>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {# Footer: score + open link #}
+        <div class="flex items-center justify-between mt-2 pt-1.5 border-t border-stone-100">
+          <span class="font-mono text-stone-400 text-[10px]">{{ lead.fit_score or 0 }} pts</span>
+          <a href="/leads/{{ lead.control_number }}"
+             class="inline-flex items-center gap-0.5 text-[10px] font-medium text-primary hover:text-primary-hover transition-colors">
+            Open <i data-lucide="arrow-right" class="w-2.5 h-2.5"></i>
+          </a>
+        </div>
+
       </div>
       {% else %}
-      <div class="rounded p-3 text-center text-muted"
-           style="border:2px dashed #dee2e6; font-size:.8rem">
+      {# Empty column #}
+      <div class="rounded-lg border-2 border-dashed border-stone-200 p-4 text-center text-[11px] text-stone-400">
         No leads
       </div>
       {% endfor %}
     </div>
+
   </div>
   {% endfor %}
 </div>
 
-{% endblock %}
-{% block scripts %}
-<style>
-  .overflow-auto { -webkit-overflow-scrolling: touch; }
-  .overflow-auto::-webkit-scrollbar { height: 6px; }
-  .overflow-auto::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
-</style>
-
-<!-- Hidden form submitted programmatically by JS -->
+{# ── Hidden batch-submit form ────────────────────────────────── #}
 <form method="POST" action="/leads/batch" id="batchForm">
   <input type="hidden" name="control_numbers" id="batchCNs">
   <input type="hidden" name="action" id="batchAction">
 </form>
 
-<!-- Sticky batch action bar — hidden until ≥1 card is checked -->
-<div id="batchBar" class="position-fixed bottom-0 start-0 end-0 bg-dark text-white py-2 px-3 d-none"
-     style="z-index:1050;border-top:2px solid #555">
-  <div class="container-fluid d-flex justify-content-between align-items-center gap-2 flex-wrap">
-    <span class="small fw-semibold"><span id="batchCount">0</span> selected</span>
-    <div class="d-flex gap-2 flex-wrap">
-      <button type="button" class="btn btn-sm btn-success"
-              onclick="doBatch('start_cadence')">🚀 Start Cadence</button>
-      <button type="button" class="btn btn-sm btn-warning text-dark"
-              onclick="doBatch('skip')">Skip</button>
-      <button type="button" class="btn btn-sm btn-danger"
-              onclick="doBatch('close')">Close (Dead)</button>
-      <button type="button" class="btn btn-sm btn-outline-light"
-              onclick="clearSel()">✕ Clear</button>
-    </div>
+{# ── Batch action bar ────────────────────────────────────────── #}
+<div x-show="selected.length > 0" x-cloak
+     x-transition:enter="transition ease-out duration-150"
+     x-transition:enter-start="opacity-0 translate-y-2"
+     x-transition:enter-end="opacity-100 translate-y-0"
+     x-transition:leave="transition ease-in duration-100"
+     x-transition:leave-start="opacity-100 translate-y-0"
+     x-transition:leave-end="opacity-0 translate-y-2"
+     class="fixed bottom-0 left-[220px] right-0 z-40 h-12 bg-stone-900 text-white
+            flex items-center justify-between px-6 gap-4">
+  <span class="text-sm font-medium">
+    <span class="font-mono font-semibold" x-text="selected.length"></span> selected
+  </span>
+  <div class="flex items-center gap-2">
+    <button type="button" @click="submitBatch('start_cadence')"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-primary text-white hover:bg-primary-hover transition-colors">
+      <i data-lucide="zap" class="w-3.5 h-3.5"></i>Start Cadence
+    </button>
+    <button type="button" @click="submitBatch('skip')"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition-colors">
+      <i data-lucide="skip-forward" class="w-3.5 h-3.5"></i>Skip
+    </button>
+    <button type="button" @click="submitBatch('close')"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors">
+      <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>Close (Dead)
+    </button>
+    <button type="button" @click="clearAll()"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-stone-600 text-stone-300 hover:bg-stone-800 transition-colors">
+      <i data-lucide="x" class="w-3.5 h-3.5"></i>Clear
+    </button>
   </div>
 </div>
 
+</div>{# end x-data="kanban()" #}
+{% endblock %}
+
+{% block scripts %}
+<style>
+  /* horizontal scroll bar styling */
+  .overflow-x-auto::-webkit-scrollbar { height: 5px; }
+  .overflow-x-auto::-webkit-scrollbar-thumb { background: #d4d0cb; border-radius: 3px; }
+</style>
 <script>
-function updateBar() {
-  const n = document.querySelectorAll('.kanban-select:checked').length;
-  document.getElementById('batchCount').textContent = n;
-  document.getElementById('batchBar').classList.toggle('d-none', n === 0);
+function kanban() {
+  return {
+    selected: [],
+
+    toggle(cn) {
+      const i = this.selected.indexOf(cn);
+      i === -1 ? this.selected.push(cn) : this.selected.splice(i, 1);
+    },
+
+    clearAll() {
+      this.selected = [];
+      document.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
+    },
+
+    submitBatch(action) {
+      document.getElementById('batchCNs').value   = this.selected.join(',');
+      document.getElementById('batchAction').value = action;
+      document.getElementById('batchForm').submit();
+    },
+  };
 }
-function clearSel() {
-  document.querySelectorAll('.kanban-select').forEach(cb => cb.checked = false);
-  updateBar();
-}
-function doBatch(action) {
-  const cns = Array.from(document.querySelectorAll('.kanban-select:checked'))
-                   .map(cb => cb.dataset.cn).join(',');
-  if (!cns) return;
-  document.getElementById('batchCNs').value  = cns;
-  document.getElementById('batchAction').value = action;
-  document.getElementById('batchForm').submit();
-}
-document.querySelectorAll('.kanban-select').forEach(cb => {
-  cb.addEventListener('change', updateBar);
-});
 </script>
 {% endblock %}
