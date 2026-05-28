@@ -1,552 +1,739 @@
 {% extends "base.html" %}
-{% block title %}{{ lead.entity_name }} — GA Leads{% endblock %}
-{% block content %}
+{% from '_components.html' import btn_primary, btn_secondary, btn_ghost, btn_danger,
+   badge_priority, badge_status, badge_neutral, card, empty_state with context %}
 
-<!-- Header -->
-<div class="d-flex justify-content-between align-items-start mb-4">
+{% block title %}{{ lead.entity_name }} — Pipeline{% endblock %}
+
+{% block page_actions %}
+<form method="POST" action="/leads/{{ lead.control_number }}/enrich">
+  {{ btn_secondary("Enrich", type="submit", icon="refresh-cw", size="sm") }}
+</form>
+{% endblock %}
+
+{% block content %}
+<div x-data="leadDetail()">
+
+{# ── Lead header ──────────────────────────────────────────────── #}
+<div class="flex items-start justify-between gap-4 mb-6">
   <div>
-    <a href="/leads" class="text-muted text-decoration-none small">← Pipeline</a>
-    <h3 class="fw-bold mb-0 mt-1">{{ lead.entity_name }}</h3>
-    <span class="badge badge-{{ lead.priority }} text-white me-1">{{ lead.priority }}</span>
-    <span class="badge bg-secondary">{{ lead.outreach_status or 'NEW' }}</span>
-    <span class="text-muted ms-2 small">Score: {{ lead.fit_score or 0 }}</span>
+    <a href="/leads"
+       class="inline-flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700 mb-2 transition-colors">
+      <i data-lucide="arrow-left" class="w-3 h-3"></i>All Leads
+    </a>
+    <h1 class="text-xl font-semibold text-stone-900 leading-tight">{{ lead.entity_name }}</h1>
+    <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+      {{ badge_priority(lead.priority) }}
+      {{ badge_status(lead.outreach_status | lower) }}
+      <span class="font-mono text-xs text-stone-400">{{ lead.fit_score or 0 }} pts</span>
+      {% if lead.formation_date %}
+      <span class="text-xs text-stone-400">Formed {{ lead.formation_date }}</span>
+      {% endif %}
+    </div>
   </div>
-  <div class="d-flex gap-2">
-    <form method="POST" action="/leads/{{ lead.control_number }}/enrich">
-      <button class="btn btn-outline-secondary btn-sm" title="Re-run website + payment + social profile search">
-        <i class="bi bi-arrow-clockwise me-1"></i>Enrich
-      </button>
-    </form>
+
+  <div class="flex gap-2 flex-shrink-0">
     {% if not cadence.active %}
     <form method="POST" action="/leads/{{ lead.control_number }}/start">
-      <button class="btn btn-dark">🚀 Start 12-Step Cadence</button>
+      {{ btn_primary("Start Cadence", type="submit", icon="zap") }}
     </form>
     {% else %}
-    <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#outcomeModal">
-      Close Lead
+    <button type="button" @click="showCloseLead = true"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-md font-medium transition-colors bg-white text-red-600 border border-stone-300 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1">
+      <i data-lucide="x-circle" class="w-4 h-4 flex-shrink-0"></i>Close Lead
     </button>
     {% endif %}
   </div>
 </div>
 
-<div class="row g-4">
+{# ── Close-lead dialog ────────────────────────────────────────── #}
+<div x-show="showCloseLead" x-cloak
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+     @keydown.escape.window="showCloseLead = false">
+  <div class="bg-white rounded-lg shadow-xl border border-stone-200 w-full max-w-sm"
+       @click.outside="showCloseLead = false">
+    <div class="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-stone-900">Close this lead</h2>
+      <button @click="showCloseLead = false"
+              class="text-stone-400 hover:text-stone-600 transition-colors">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <form method="POST" action="/leads/{{ lead.control_number }}/outcome" class="p-5 space-y-2">
+      {% for outcome_val, label, cls in [
+        ("converted",  "Converted — they're in",           "text-green-600"),
+        ("nurture_90", "Nurture — check back in 90 days",  "text-amber-600"),
+        ("dead",       "Dead — not interested",             "text-red-600"),
+        ("no_contact", "No contact — never reached",        "text-stone-500"),
+      ] %}
+      <label class="flex items-center gap-2.5 cursor-pointer">
+        <input type="radio" name="outcome" value="{{ outcome_val }}"
+               {% if loop.first %}checked{% endif %}>
+        <span class="text-sm {{ cls }}">{{ label }}</span>
+      </label>
+      {% endfor %}
+      <textarea name="notes" rows="2"
+                class="mt-2 w-full text-sm border border-stone-200 rounded-md px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                placeholder="Final notes (optional)"></textarea>
+      <div class="flex gap-2 justify-end pt-1">
+        <button type="button" @click="showCloseLead = false"
+                class="px-3 py-2 text-sm rounded-md border border-stone-300 text-stone-700 hover:bg-stone-50">
+          Cancel
+        </button>
+        <button type="submit"
+                class="px-3 py-2 text-sm rounded-md bg-red-600 text-white font-medium hover:bg-red-700">
+          Close Lead
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
 
-  <!-- LEFT: Contact card + cadence -->
-  <div class="col-lg-4">
+{# ── Two-column layout ────────────────────────────────────────── #}
+<div class="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5 items-start">
 
-    <!-- Contact info -->
-    <div class="card task-card mb-3">
-      <div class="card-body">
-        <h6 class="fw-bold mb-3">Contact</h6>
-        <table class="table table-sm table-borderless mb-0">
-          <tr><td class="text-muted">Organizer</td><td class="fw-semibold">{{ lead.organizer_name or '—' }}</td></tr>
-          <tr><td class="text-muted">Phone</td>
-              <td>
-                {% if best_phone %}
-                  <a href="tel:{{ best_phone }}">{{ best_phone }}</a>
-                  {% if lead.filer_phone and lead.business_phone and lead.filer_phone != lead.business_phone %}
-                  <div class="small text-muted mt-1">
-                    <a href="tel:{{ lead.business_phone }}">{{ lead.business_phone }}</a>
-                    <span class="badge bg-light text-muted ms-1">business</span>
-                  </div>
-                  {% endif %}
-                {% else %}—{% endif %}
-              </td></tr>
-          <tr><td class="text-muted">Email</td>
-              <td>
-                {% if best_email %}
-                  <a href="mailto:{{ best_email }}">{{ best_email }}</a>
-                {% else %}—{% endif %}
-              </td></tr>
-          <tr><td class="text-muted">Address</td><td>{{ lead.principal_office_address or '—' }}</td></tr>
-          <tr><td class="text-muted">Category</td><td>{{ lead.industry_category or '—' }}</td></tr>
-          <tr><td class="text-muted">Formed</td><td>{{ lead.formation_date or '—' }}</td></tr>
-          {% if lead.website %}
-          <tr><td class="text-muted">Website</td>
-              <td><a href="{{ lead.website }}" target="_blank">{{ lead.website[:30] }}</a></td></tr>
+  {# ── LEFT COLUMN ─────────────────────────────────────────────── #}
+  <div class="space-y-4">
+
+    {# Contact card #}
+    <div class="bg-white rounded-lg shadow-card border border-stone-200">
+      <div class="px-5 py-3 border-b border-stone-200">
+        <h3 class="text-sm font-semibold text-stone-900">Contact</h3>
+      </div>
+      <div class="px-5 py-4">
+        <dl class="space-y-2.5">
+
+          {# Static rows #}
+          {% for lbl, val in [
+            ("Organizer", lead.organizer_name or '—'),
+            ("Formed",    lead.formation_date or '—'),
+            ("Category",  lead.industry_category or '—'),
+          ] %}
+          <div class="flex gap-2 text-sm">
+            <dt class="w-24 flex-shrink-0 text-stone-400 font-medium text-xs pt-0.5">{{ lbl }}</dt>
+            <dd class="text-stone-700 text-xs min-w-0 break-words">{{ val }}</dd>
+          </div>
+          {% endfor %}
+
+          {# Address #}
+          {% if lead.principal_office_address %}
+          <div class="flex gap-2 text-sm">
+            <dt class="w-24 flex-shrink-0 text-stone-400 font-medium text-xs pt-0.5">Address</dt>
+            <dd class="text-stone-700 text-xs min-w-0 break-words">{{ lead.principal_office_address }}</dd>
+          </div>
           {% endif %}
-          {% if lead.detected_payment_processor %}
-          <tr><td class="text-muted">Processor</td>
-              <td><span class="badge bg-warning text-dark">{{ lead.detected_payment_processor }}</span></td></tr>
-          {% endif %}
-          {% if lead.review_snippet %}
-          <tr>
-            <td class="text-muted align-top">Reviews</td>
-            <td>
-              <div class="small text-muted" style="font-size:.78rem;line-height:1.4">
-                {{ lead.review_snippet[:160] }}…
-                {% if lead.review_has_payment_friction %}
-                <span class="badge bg-warning text-dark ms-1">payment friction</span>
-                {% endif %}
+
+          {# Phone #}
+          <div class="flex gap-2 text-sm">
+            <dt class="w-24 flex-shrink-0 text-stone-400 font-medium text-xs pt-0.5">Phone</dt>
+            <dd class="text-xs min-w-0">
+              {% if best_phone %}
+              <a href="tel:{{ best_phone }}"
+                 class="font-mono text-stone-700 hover:text-primary transition-colors">
+                {{ best_phone | phone_fmt }}
+              </a>
+              {% if lead.filer_phone and lead.business_phone and lead.filer_phone != lead.business_phone %}
+              <div class="mt-0.5">
+                <a href="tel:{{ lead.business_phone }}"
+                   class="font-mono text-stone-400 hover:text-stone-600 transition-colors text-[11px]">
+                  {{ lead.business_phone | phone_fmt }}
+                </a>
+                <span class="text-[10px] text-stone-300 ml-1">business</span>
               </div>
-            </td>
-          </tr>
+              {% endif %}
+              {% else %}
+              <span class="text-stone-300">—</span>
+              {% endif %}
+            </dd>
+          </div>
+
+          {# Email #}
+          <div class="flex gap-2">
+            <dt class="w-24 flex-shrink-0 text-stone-400 font-medium text-xs pt-0.5">Email</dt>
+            <dd class="text-xs min-w-0">
+              {% if best_email %}
+              <a href="mailto:{{ best_email }}"
+                 class="text-stone-700 hover:text-primary transition-colors truncate block">
+                {{ best_email }}
+              </a>
+              {% else %}
+              <span class="text-stone-300">—</span>
+              {% endif %}
+            </dd>
+          </div>
+
+          {# Website #}
+          {% if lead.website %}
+          <div class="flex gap-2">
+            <dt class="w-24 flex-shrink-0 text-stone-400 font-medium text-xs pt-0.5">Website</dt>
+            <dd class="text-xs min-w-0">
+              <a href="{{ lead.website }}" target="_blank" rel="noopener"
+                 class="text-stone-700 hover:text-primary transition-colors truncate block">
+                {{ lead.website[:40] }}
+              </a>
+            </dd>
+          </div>
           {% endif %}
-        </table>
+
+          {# Processor #}
+          {% if lead.detected_payment_processor %}
+          <div class="flex gap-2">
+            <dt class="w-24 flex-shrink-0 text-stone-400 font-medium text-xs pt-0.5">Processor</dt>
+            <dd>
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">
+                {{ lead.detected_payment_processor }}
+              </span>
+            </dd>
+          </div>
+          {% endif %}
+
+          {# Review snippet #}
+          {% if lead.review_snippet %}
+          <div class="flex gap-2 pt-0.5">
+            <dt class="w-24 flex-shrink-0 text-stone-400 font-medium text-xs">Reviews</dt>
+            <dd class="text-[11px] text-stone-500 leading-relaxed min-w-0">
+              {{ lead.review_snippet[:160] }}…
+              {% if lead.review_has_payment_friction %}
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 ml-1">
+                payment friction
+              </span>
+              {% endif %}
+            </dd>
+          </div>
+          {% endif %}
+
+        </dl>
       </div>
     </div>
 
-    <!-- Online profiles -->
-    {% set profiles = [
-      ("facebook_url",   "bi-facebook",   "#1877f2", "Facebook"),
-      ("instagram_url",  "bi-instagram",  "#e1306c", "Instagram"),
-      ("linkedin_url",   "bi-linkedin",   "#0077b5", "LinkedIn"),
-      ("yelp_url",       "bi-star-fill",  "#d32323", "Yelp"),
-      ("angi_url",       "bi-tools",      "#ff6e31", "Angi"),
-      ("google_maps_url","bi-geo-alt-fill","#4285f4","Google Maps"),
-    ] %}
+    {# Online profiles card #}
     {% set has_any_profile = lead.facebook_url or lead.instagram_url or lead.linkedin_url
        or lead.yelp_url or lead.angi_url or lead.google_maps_url %}
-
-    <div class="card task-card mb-3">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="fw-bold mb-0">Online Profiles</h6>
-          {% if not lead.profiles_searched %}
-          <span class="text-muted small">Not searched yet — click Enrich</span>
-          {% endif %}
-        </div>
+    <div class="bg-white rounded-lg shadow-card border border-stone-200">
+      <div class="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-stone-900">Online Profiles</h3>
+        {% if not lead.profiles_searched %}
+        <span class="text-[10px] text-stone-400">not searched</span>
+        {% endif %}
+      </div>
+      <div class="px-5 py-4">
         {% if has_any_profile %}
-        <div class="d-flex flex-wrap gap-2">
-          {% for field, icon, color, label in profiles %}
+        <div class="flex flex-wrap gap-2">
+          {% for field, label in [
+            ("facebook_url",    "Facebook"),
+            ("instagram_url",   "Instagram"),
+            ("linkedin_url",    "LinkedIn"),
+            ("yelp_url",        "Yelp"),
+            ("angi_url",        "Angi"),
+            ("google_maps_url", "Maps"),
+          ] %}
           {% if lead[field] %}
           <a href="{{ lead[field] }}" target="_blank" rel="noopener"
-             class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
-            <i class="{{ icon }}" style="color:{{ color }}"></i>
-            {{ label }}
+             class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors">
+            <i data-lucide="external-link" class="w-3 h-3"></i>{{ label }}
           </a>
           {% endif %}
           {% endfor %}
         </div>
         {% elif lead.profiles_searched %}
-        <p class="text-muted small mb-0">No public profiles found for this business.</p>
+        <p class="text-xs text-stone-400">No public profiles found for this business.</p>
         {% else %}
-        <p class="text-muted small mb-0">
-          Click <strong>Enrich</strong> above to search Facebook, Instagram, LinkedIn, Yelp, Angi, and Google Maps.
+        <p class="text-xs text-stone-400">
+          Click <strong class="text-stone-500">Enrich</strong> to search Facebook, Instagram,
+          LinkedIn, Yelp, Angi, and Google Maps.
         </p>
         {% endif %}
       </div>
     </div>
 
-    <!-- Personalization signals -->
-    <div class="card task-card mb-3">
-      <div class="card-body">
-        <h6 class="fw-bold mb-2" style="font-size:.85rem">
-          Outreach Signals
-          <span class="text-muted fw-normal ms-1" style="font-size:.75rem">driving copy</span>
-        </h6>
-        <div class="vstack gap-1" style="font-size:.78rem">
+    {# Outreach signals card #}
+    <div class="bg-white rounded-lg shadow-card border border-stone-200">
+      <div class="px-5 py-3 border-b border-stone-200">
+        <h3 class="text-sm font-semibold text-stone-900">Outreach Signals</h3>
+      </div>
+      <div class="px-5 py-4 space-y-2">
 
-          {# Web presence #}
-          {% if lead.website %}
-          <div><span class="text-success me-1">✓</span>
-            Website: <a href="{{ lead.website }}" target="_blank" class="text-muted">{{ lead.website[:35] }}</a>
-          </div>
-          {% elif lead.yelp_url %}
-          <div><span class="text-success me-1">✓</span>
-            <a href="{{ lead.yelp_url }}" target="_blank" class="text-muted">Yelp listing found</a>
-          </div>
-          {% elif lead.google_maps_url %}
-          <div><span class="text-success me-1">✓</span>
-            <a href="{{ lead.google_maps_url }}" target="_blank" class="text-muted">Google listing found</a>
-          </div>
-          {% else %}
-          <div class="text-muted"><span class="me-1">—</span>No web presence found</div>
-          {% endif %}
-
-          {# Payment stack #}
-          {% if lead.detected_payment_processor %}
-          <div><span class="text-warning me-1">⚡</span>
-            Processor: <span class="fw-semibold">{{ lead.detected_payment_processor }}</span>
-            <span class="text-muted">(stack_hook active)</span>
-          </div>
-          {% elif lead.detected_vertical_saas %}
-          <div><span class="text-warning me-1">⚡</span>
-            SaaS: <span class="fw-semibold">{{ lead.detected_vertical_saas }}</span>
-            <span class="text-muted">(stack_hook active)</span>
-          </div>
-          {% elif lead.has_website and not lead.has_online_payment %}
-          <div><span class="text-info me-1">↗</span>
-            Site found, no online payment
-            <span class="text-muted">(stack_hook active)</span>
-          </div>
-          {% elif lead.invoice_workflow_signals and not lead.has_online_payment %}
-          <div><span class="text-info me-1">↗</span>
-            Invoice signals, no payment
-            <span class="text-muted">(stack_hook active)</span>
-          </div>
-          {% else %}
-          <div class="text-muted"><span class="me-1">—</span>No stack signal</div>
-          {% endif %}
-
-          {# Review friction #}
-          {% if lead.review_has_payment_friction %}
-          <div><span class="text-danger me-1">⚠</span>
-            Payment friction in reviews
-            <span class="text-muted">(review_detail active)</span>
-          </div>
-          {% elif lead.review_snippet %}
-          <div><span class="text-success me-1">✓</span>
-            Review snippet found
-          </div>
-          {% else %}
-          <div class="text-muted"><span class="me-1">—</span>No review signals</div>
-          {% endif %}
-
-          {# Contact coverage #}
-          {% if best_phone and best_email %}
-          <div><span class="text-success me-1">✓</span>Phone + email on file</div>
-          {% elif best_phone %}
-          <div><span class="text-warning me-1">⚠</span>Phone only — no email</div>
-          {% elif best_email %}
-          <div><span class="text-warning me-1">⚠</span>Email only — no phone</div>
-          {% else %}
-          <div class="text-danger"><span class="me-1">✗</span>No contact info</div>
-          {% endif %}
-
+        {# Web presence #}
+        {% if lead.website %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="check-circle" class="w-3.5 h-3.5 text-green-500 mt-0.5 flex-shrink-0"></i>
+          <span class="text-stone-600">Website:
+            <a href="{{ lead.website }}" target="_blank"
+               class="text-stone-400 hover:text-stone-600 transition-colors">{{ lead.website[:35] }}</a>
+          </span>
         </div>
+        {% elif lead.yelp_url %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="check-circle" class="w-3.5 h-3.5 text-green-500 mt-0.5 flex-shrink-0"></i>
+          <a href="{{ lead.yelp_url }}" target="_blank"
+             class="text-stone-600 hover:text-stone-800 transition-colors">Yelp listing found</a>
+        </div>
+        {% elif lead.google_maps_url %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="check-circle" class="w-3.5 h-3.5 text-green-500 mt-0.5 flex-shrink-0"></i>
+          <a href="{{ lead.google_maps_url }}" target="_blank"
+             class="text-stone-600 hover:text-stone-800 transition-colors">Google listing found</a>
+        </div>
+        {% else %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="minus-circle" class="w-3.5 h-3.5 text-stone-300 mt-0.5 flex-shrink-0"></i>
+          <span class="text-stone-400">No web presence found</span>
+        </div>
+        {% endif %}
+
+        {# Payment stack #}
+        {% if lead.detected_payment_processor %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0"></i>
+          <span class="text-stone-600">Processor: <strong>{{ lead.detected_payment_processor }}</strong>
+            <span class="text-stone-400"> (stack hook)</span>
+          </span>
+        </div>
+        {% elif lead.detected_vertical_saas %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0"></i>
+          <span class="text-stone-600">SaaS: <strong>{{ lead.detected_vertical_saas }}</strong>
+            <span class="text-stone-400"> (stack hook)</span>
+          </span>
+        </div>
+        {% elif lead.has_website and not lead.has_online_payment %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="trending-up" class="w-3.5 h-3.5 text-blue-400 mt-0.5 flex-shrink-0"></i>
+          <span class="text-stone-600">Site found, no online payment
+            <span class="text-stone-400">(stack hook)</span>
+          </span>
+        </div>
+        {% elif lead.invoice_workflow_signals and not lead.has_online_payment %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="trending-up" class="w-3.5 h-3.5 text-blue-400 mt-0.5 flex-shrink-0"></i>
+          <span class="text-stone-600">Invoice signals, no payment
+            <span class="text-stone-400">(stack hook)</span>
+          </span>
+        </div>
+        {% else %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="minus-circle" class="w-3.5 h-3.5 text-stone-300 mt-0.5 flex-shrink-0"></i>
+          <span class="text-stone-400">No stack signal</span>
+        </div>
+        {% endif %}
+
+        {# Review friction #}
+        {% if lead.review_has_payment_friction %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0"></i>
+          <span class="text-stone-600">Payment friction in reviews
+            <span class="text-stone-400">(review hook)</span>
+          </span>
+        </div>
+        {% elif lead.review_snippet %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="check-circle" class="w-3.5 h-3.5 text-green-500 mt-0.5 flex-shrink-0"></i>
+          <span class="text-stone-600">Review snippet found</span>
+        </div>
+        {% else %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="minus-circle" class="w-3.5 h-3.5 text-stone-300 mt-0.5 flex-shrink-0"></i>
+          <span class="text-stone-400">No review signals</span>
+        </div>
+        {% endif %}
+
+        {# Contact coverage #}
+        {% if best_phone and best_email %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="check-circle" class="w-3.5 h-3.5 text-green-500 mt-0.5 flex-shrink-0"></i>
+          <span class="text-stone-600">Phone + email on file</span>
+        </div>
+        {% elif best_phone %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="alert-circle" class="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-shrink-0"></i>
+          <span class="text-stone-600">Phone only — no email</span>
+        </div>
+        {% elif best_email %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="alert-circle" class="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-shrink-0"></i>
+          <span class="text-stone-600">Email only — no phone</span>
+        </div>
+        {% else %}
+        <div class="flex items-start gap-2 text-xs">
+          <i data-lucide="x-circle" class="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0"></i>
+          <span class="text-red-600">No contact info</span>
+        </div>
+        {% endif %}
+
       </div>
     </div>
 
-    <!-- Cadence progress -->
-    <div class="card task-card">
-      <div class="card-body">
-        <h6 class="fw-bold mb-3">12-Step Cadence
-          {% if cadence.active %}
-          <span class="badge bg-success ms-1">{{ cadence.completed }}/{{ cadence.total }}</span>
-          {% endif %}
-        </h6>
+    {# Cadence progress card #}
+    <div class="bg-white rounded-lg shadow-card border border-stone-200">
+      <div class="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-stone-900">12-Step Cadence</h3>
+        {% if cadence.active %}
+        <span class="font-mono text-xs text-stone-400">{{ cadence.completed }}/{{ cadence.total }}</span>
+        {% endif %}
+      </div>
+      <div class="px-5 py-4">
 
         {% if cadence.active %}
-        <div class="vstack gap-1">
+        <div class="space-y-0.5">
           {% for task in cadence.tasks %}
           {% set is_next = cadence.next_task and task.id == cadence.next_task.id %}
-          <div class="d-flex align-items-center gap-2 py-1 px-2 rounded
-            {% if task.status == 'done' %}step-done{% elif is_next %}bg-light border{% endif %}">
+          {% set is_done = task.status == 'done' %}
 
-            <span class="step-{{ task.task_type }}">
-              {% if task.task_type == 'call' %}📞
-              {% elif task.task_type == 'email' %}✉️
-              {% elif task.task_type == 'vm' %}📱
-              {% elif task.task_type == 'message' %}💬
-              {% else %}📋{% endif %}
+          {# Step row #}
+          <div class="flex items-start gap-2 py-1.5 px-2 rounded-md
+               {% if is_next %}bg-stone-50 border border-stone-200{% endif %}">
+
+            {# Task type icon #}
+            <span class="mt-0.5 flex-shrink-0">
+              {% set icon_name = 'phone' if task.task_type == 'call' else
+                                 'mail' if task.task_type == 'email' else
+                                 'voicemail' if task.task_type == 'vm' else
+                                 'message-square' if task.task_type == 'message' else
+                                 'check-square' %}
+              {% set icon_cls = 'text-stone-200' if is_done else
+                                'text-primary' if is_next else
+                                'text-stone-300' %}
+              <i data-lucide="{{ icon_name }}" class="w-3.5 h-3.5 {{ icon_cls }}"></i>
             </span>
 
-            <div class="flex-grow-1 small">
-              <span class="{% if task.status == 'done' %}text-decoration-line-through text-muted{% endif %}">
-                {{ task.label }}
-              </span>
-              <span class="text-muted ms-1">D{{ task.cadence_day }}</span>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between gap-1">
+                <span class="text-xs truncate
+                  {% if is_done %}line-through text-stone-300
+                  {% elif is_next %}text-stone-800 font-medium
+                  {% else %}text-stone-400{% endif %}">
+                  {{ task.label }}
+                </span>
+                <span class="text-[10px] font-mono text-stone-300 flex-shrink-0">D{{ task.cadence_day }}</span>
+              </div>
               {% if task.outcome %}
-              <span class="badge bg-light text-dark ms-1">{{ task.outcome }}</span>
+              <span class="text-[10px] text-stone-400">{{ task.outcome | replace('_', ' ') }}</span>
               {% endif %}
             </div>
 
-            {% if task.status == 'done' %}
-            <i class="bi bi-check-circle-fill text-success"></i>
-            {% elif is_next %}
-            <div class="d-flex gap-1 align-items-center flex-wrap">
-              {% if task.task_type in ('call', 'vm') and best_phone %}
-              <a href="tel:{{ best_phone }}"
-                 class="btn btn-sm btn-outline-success py-0 px-2"
-                 title="Dial {{ best_phone }}">📞</a>
-              {% endif %}
-              {% if task.task_type == 'message' and best_phone %}
-              <a href="{{ rendered[5].sms if rendered[5] else 'sms:' + best_phone }}"
-                 class="btn btn-sm btn-outline-info py-0 px-2"
-                 title="Open Messages">💬</a>
-              {% endif %}
-              {% if task.task_type == 'email' and rendered[task.step] and rendered[task.step].mailto %}
-              <a href="{{ rendered[task.step].mailto }}"
-                 class="btn btn-sm btn-outline-dark py-0 px-2"
-                 title="Open in Mail">✉️</a>
-              {% endif %}
-              <button class="btn btn-sm btn-success py-0 px-2 complete-btn"
-                      data-task-id="{{ task.id }}"
-                      data-type="{{ task.task_type }}"
-                      data-cn="{{ lead.control_number }}">✓</button>
-            </div>
+            {% if is_done %}
+            <i data-lucide="check" class="w-3.5 h-3.5 text-green-500 flex-shrink-0 mt-0.5"></i>
             {% endif %}
           </div>
-          {% endfor %}
-        </div>
 
-        {% else %}
-        <p class="text-muted small">No cadence running. Start one to generate all 12 tasks with due dates.</p>
-        {% endif %}
-      </div>
-    </div>
-
-  </div>
-
-  <!-- RIGHT: Email drafts + log -->
-  <div class="col-lg-8">
-
-    <!-- Outreach drafts -->
-    <div class="card task-card mb-3">
-      <div class="card-body">
-        <h6 class="fw-bold mb-3">Outreach Scripts</h6>
-
-        <!-- SMS draft (Step 5) -->
-        {% if rendered[5] %}
-        <div class="mb-3 p-3 rounded" style="background:#e8f5e9;border-left:3px solid #4caf50">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <span class="small fw-bold">💬 Day 3 — Text Message</span>
-            {% if not best_phone %}
-            <span class="badge bg-warning text-dark">No phone on file</span>
-            {% endif %}
-          </div>
-          <div class="small" style="white-space:pre-wrap;font-family:inherit">{{ rendered[5].body }}</div>
-          <div class="mt-2 d-flex gap-2 flex-wrap">
-            {% if rendered[5].sms %}
-            <a href="{{ rendered[5].sms }}" class="btn btn-sm btn-success">
-              <i class="bi bi-chat-dots me-1"></i>Open Messages
+          {# Action buttons for next pending task #}
+          {% if is_next %}
+          <div class="ml-7 pb-1.5 flex items-center gap-1.5 flex-wrap">
+            {% if task.task_type in ('call', 'vm') and best_phone %}
+            <a href="tel:{{ best_phone }}"
+               class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors">
+              <i data-lucide="phone" class="w-3 h-3"></i>Dial
             </a>
             {% endif %}
-            <button class="btn btn-sm btn-outline-secondary copy-btn"
-                    data-text="{{ rendered[5].body | tojson }}">
-              <i class="bi bi-clipboard"></i> Copy
-            </button>
-            <a href="/templates#step-5" class="btn btn-sm btn-link text-muted p-0 align-self-center">Edit →</a>
-          </div>
-        </div>
-        {% endif %}
-
-        <!-- VM script (Step 2) -->
-        {% if rendered[2] %}
-        <div class="mb-3 p-3 bg-light rounded">
-          <div class="d-flex justify-content-between align-items-center mb-1">
-            <span class="small fw-bold">📱 Voicemail Script</span>
-            {% if rendered[2].tel %}
-            <a href="{{ rendered[2].tel }}" class="btn btn-sm btn-outline-success py-0 px-2">📞 Dial</a>
+            {% if task.task_type == 'message' and best_phone %}
+            <a href="sms:{{ best_phone }}"
+               class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors">
+              <i data-lucide="message-square" class="w-3 h-3"></i>Message
+            </a>
             {% endif %}
-          </div>
-          <em class="small">{{ rendered[2].body }}</em>
-          <div class="mt-2">
-            <button class="btn btn-sm btn-outline-secondary copy-btn"
-                    data-text="{{ rendered[2].body | tojson }}">
-              <i class="bi bi-clipboard"></i> Copy Script
+            {% if task.task_type == 'email' and rendered[task.step] and rendered[task.step].mailto %}
+            <a href="{{ rendered[task.step].mailto }}"
+               class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors">
+              <i data-lucide="mail" class="w-3 h-3"></i>Open Mail
+            </a>
+            {% endif %}
+            <button type="button"
+                    @click="openCompletePanel({{ task.id }}, '{{ task.task_type }}')"
+                    class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-primary text-white hover:bg-primary-hover transition-colors">
+              <i data-lucide="check" class="w-3 h-3"></i>Log outcome
             </button>
           </div>
-        </div>
-        {% endif %}
+          {% endif %}
 
-        <!-- Email drafts (accordion) -->
-        <div class="small fw-semibold text-muted mb-2 mt-1">✉️ Email Drafts</div>
-        <div class="accordion accordion-flush" id="emailAccordion">
-          {% for step, tmpl in rendered.items() if tmpl.type == 'email' %}
-          <div class="accordion-item">
-            <h2 class="accordion-header">
-              <button class="accordion-button collapsed py-2 small" type="button"
-                      data-bs-toggle="collapse" data-bs-target="#email-{{ step }}">
-                Step {{ step }} —
-                {% if step == 3 %}Day 1 Intro
-                {% elif step == 8 %}Day 6 Bump
-                {% elif step == 10 %}Day 9 Proof Point
-                {% elif step == 12 %}Day 12 Close Loop
-                {% endif %}
-              </button>
-            </h2>
-            <div id="email-{{ step }}" class="accordion-collapse collapse">
-              <div class="accordion-body p-2">
-                <div class="email-draft p-3">
-                  <div class="text-muted small mb-1">
-                    <strong>To:</strong> {{ best_email or '[email not found]' }}
-                    &nbsp;|&nbsp;
-                    <strong>Subject:</strong> {{ tmpl.subject }}
-                  </div>
-                  <hr class="my-2">
-                  <pre class="mb-0" style="white-space:pre-wrap;font-family:inherit">{{ tmpl.body }}</pre>
-                </div>
-                <div class="mt-2 d-flex gap-2 flex-wrap">
-                  {% if tmpl.mailto %}
-                  <a href="{{ tmpl.mailto }}" class="btn btn-sm btn-dark">
-                    <i class="bi bi-envelope me-1"></i>Open in Mail
-                  </a>
-                  {% endif %}
-                  <button class="btn btn-sm btn-outline-secondary copy-btn"
-                          data-text="{{ tmpl.body | tojson }}">
-                    <i class="bi bi-clipboard"></i> Copy
-                  </button>
-                  <a href="/templates#step-{{ step }}" class="btn btn-sm btn-link text-muted p-0 align-self-center">
-                    Edit →
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
           {% endfor %}
         </div>
-      </div>
-    </div>
 
-    <!-- Activity timeline -->
-    <div class="card task-card">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <h6 class="fw-bold mb-0">Activity Timeline</h6>
-          <button type="button" class="note-toggle btn btn-sm btn-outline-secondary"
-                  data-target="timeline-note-form" style="font-size:.75rem">📝 Add Note</button>
-        </div>
-
-        <!-- Inline note form -->
-        <div class="d-none mb-3" id="timeline-note-form">
-          <form method="POST" action="/leads/{{ lead.control_number }}/note"
-                class="d-flex gap-2">
-            <textarea name="note" class="form-control form-control-sm" rows="2"
-                      placeholder="Log a call outcome, next step, or anything relevant…"
-                      style="font-size:.85rem"></textarea>
-            <button type="submit" class="btn btn-dark btn-sm flex-shrink-0">Save</button>
+        {# Inline complete-task panel #}
+        <div x-show="showCompletePanel" x-cloak x-transition
+             class="mt-3 p-3 bg-stone-50 border border-stone-200 rounded-lg">
+          <form method="POST" action="/leads/{{ lead.control_number }}/complete_task"
+                class="space-y-3">
+            <input type="hidden" name="task_id" :value="panelTaskId">
+            <div class="space-y-1.5">
+              <template x-for="opt in panelOutcomes" :key="opt.value">
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="outcome" :value="opt.value">
+                  <span class="text-xs text-stone-700" x-text="opt.label"></span>
+                </label>
+              </template>
+            </div>
+            <textarea name="notes" rows="2"
+                      class="w-full text-xs border border-stone-200 rounded px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      placeholder="Notes (optional)"></textarea>
+            <div class="flex gap-2">
+              <button type="submit"
+                      class="px-3 py-1.5 text-xs rounded bg-primary text-white font-medium hover:bg-primary-hover transition-colors">
+                Save
+              </button>
+              <button type="button" @click="showCompletePanel = false"
+                      class="px-3 py-1.5 text-xs rounded border border-stone-200 text-stone-600 hover:bg-stone-100 transition-colors">
+                Cancel
+              </button>
+            </div>
           </form>
         </div>
 
-        {% if log %}
-        <div class="vstack gap-2">
-          {% for entry in log %}
-          <div class="d-flex gap-2 align-items-start small border-start border-2 ps-3"
-               style="border-color:#dee2e6 !important">
-            <div style="min-width:20px;text-align:center">
-              {% if entry.task_type == 'call' %}📞
-              {% elif entry.task_type == 'email' %}✉️
-              {% elif entry.task_type == 'vm' %}📱
-              {% elif entry.task_type == 'message' %}💬
-              {% elif entry.task_type == 'outcome' %}🏁
-              {% elif entry.task_type == 'note' %}📝
-              {% else %}📋{% endif %}
+        {% else %}
+        <div class="text-center py-6">
+          <i data-lucide="list-checks" class="w-8 h-8 text-stone-200 mx-auto mb-2"></i>
+          <p class="text-xs text-stone-400 max-w-[200px] mx-auto">
+            No cadence running. Start one to generate all {{ cadence_def | length }} touch tasks with due dates.
+          </p>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+
+  </div>{# end left column #}
+
+  {# ── RIGHT COLUMN ─────────────────────────────────────────────── #}
+  <div class="space-y-5">
+
+    {# Outreach scripts card #}
+    <div class="bg-white rounded-lg shadow-card border border-stone-200">
+      <div class="px-5 py-3 border-b border-stone-200">
+        <h3 class="text-sm font-semibold text-stone-900">Outreach Scripts</h3>
+      </div>
+      <div class="px-5 py-4 space-y-4">
+
+        {# SMS draft — Step 5 #}
+        {% if rendered[5] %}
+        <div class="p-3 rounded-lg bg-green-50 border border-green-100">
+          <div class="flex items-center justify-between mb-2">
+            <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-green-800">
+              <i data-lucide="message-square" class="w-3.5 h-3.5"></i>Day 3 — Text Message
+            </span>
+            {% if not best_phone %}
+            <span class="text-xs text-amber-600 font-medium">No phone on file</span>
+            {% endif %}
+          </div>
+          <pre class="text-xs text-stone-700 leading-relaxed whitespace-pre-wrap font-sans mb-2.5">{{ rendered[5].body }}</pre>
+          <div class="flex gap-2 flex-wrap">
+            {% if rendered[5].sms %}
+            <a href="{{ rendered[5].sms }}"
+               class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700 transition-colors">
+              <i data-lucide="message-square" class="w-3 h-3"></i>Open Messages
+            </a>
+            {% endif %}
+            <button type="button" @click="copyText($event, {{ rendered[5].body | tojson }})"
+                    class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium border border-green-200 text-green-700 hover:bg-green-100 transition-colors">
+              <i data-lucide="clipboard" class="w-3 h-3"></i><span>Copy</span>
+            </button>
+          </div>
+        </div>
+        {% endif %}
+
+        {# VM script — Step 2 #}
+        {% if rendered[2] %}
+        <div class="p-3 rounded-lg bg-stone-50 border border-stone-200">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-700">
+              <i data-lucide="voicemail" class="w-3.5 h-3.5"></i>Voicemail Script
+            </span>
+            {% if rendered[2].tel %}
+            <a href="{{ rendered[2].tel }}"
+               class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-stone-200 text-stone-600 hover:bg-white transition-colors">
+              <i data-lucide="phone" class="w-3 h-3"></i>Dial
+            </a>
+            {% endif %}
+          </div>
+          <p class="text-xs text-stone-600 leading-relaxed italic mb-2">{{ rendered[2].body }}</p>
+          <button type="button" @click="copyText($event, {{ rendered[2].body | tojson }})"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium border border-stone-200 text-stone-600 hover:bg-white transition-colors">
+            <i data-lucide="clipboard" class="w-3 h-3"></i><span>Copy Script</span>
+          </button>
+        </div>
+        {% endif %}
+
+        {# Email drafts — Alpine accordion #}
+        <div x-data="{ openEmail: null }">
+          <p class="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 mb-2">
+            <i data-lucide="mail" class="w-3.5 h-3.5"></i>Email Drafts
+          </p>
+          <div class="space-y-1">
+            {% for step, tmpl in rendered.items() if tmpl.type == 'email' %}
+            <div class="border border-stone-200 rounded-md overflow-hidden">
+              <button type="button"
+                      @click="openEmail = openEmail === {{ step }} ? null : {{ step }}"
+                      class="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-stone-700 hover:bg-stone-50 transition-colors text-left">
+                <span>
+                  Step {{ step }} —
+                  {% if step == 3 %}Day 1 Intro
+                  {% elif step == 8 %}Day 6 Bump
+                  {% elif step == 10 %}Day 9 Proof Point
+                  {% elif step == 12 %}Day 12 Close Loop
+                  {% else %}Email {{ step }}{% endif %}
+                </span>
+                <i data-lucide="chevron-down"
+                   class="w-3.5 h-3.5 text-stone-400 transition-transform flex-shrink-0"
+                   :class="openEmail === {{ step }} ? 'rotate-180' : ''"></i>
+              </button>
+              <div x-show="openEmail === {{ step }}" x-cloak>
+                <div class="px-3 pb-3 border-t border-stone-100 pt-2">
+                  <p class="text-xs text-stone-500 mb-2">
+                    <span class="text-stone-400">To:</span> {{ best_email or '[email not found]' }}
+                    <span class="mx-1.5 text-stone-200">|</span>
+                    <span class="text-stone-400">Subject:</span> {{ tmpl.subject }}
+                  </p>
+                  <pre class="text-xs text-stone-700 leading-relaxed whitespace-pre-wrap font-sans bg-stone-50 rounded p-2.5 border border-stone-100 mb-2.5">{{ tmpl.body }}</pre>
+                  <div class="flex gap-2 flex-wrap">
+                    {% if tmpl.mailto %}
+                    <a href="{{ tmpl.mailto }}"
+                       class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-stone-800 text-white hover:bg-stone-900 transition-colors">
+                      <i data-lucide="mail" class="w-3 h-3"></i>Open in Mail
+                    </a>
+                    {% endif %}
+                    <button type="button" @click="copyText($event, {{ tmpl.body | tojson }})"
+                            class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors">
+                      <i data-lucide="clipboard" class="w-3 h-3"></i><span>Copy</span>
+                    </button>
+                    <a href="/templates#step-{{ step }}"
+                       class="text-xs text-stone-400 hover:text-stone-600 self-center transition-colors">
+                      Edit template →
+                    </a>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="flex-grow-1">
-              <div class="d-flex justify-content-between align-items-start">
-                <span class="fw-semibold">
+            {% endfor %}
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    {# Activity timeline card #}
+    <div class="bg-white rounded-lg shadow-card border border-stone-200">
+      <div class="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-stone-900">Activity Timeline</h3>
+        <button type="button"
+                @click="showNoteForm = !showNoteForm; if (showNoteForm) $nextTick(() => $refs.noteInput && $refs.noteInput.focus())"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>Add Note
+        </button>
+      </div>
+      <div class="px-5 py-4">
+
+        {# Note form #}
+        <div x-show="showNoteForm" x-cloak x-transition class="mb-4">
+          <form method="POST" action="/leads/{{ lead.control_number }}/note"
+                class="flex gap-2">
+            <textarea name="note" rows="2" x-ref="noteInput"
+                      class="flex-1 text-sm border border-stone-200 rounded-md px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      placeholder="Log a call outcome, next step, or anything relevant…"></textarea>
+            <button type="submit"
+                    class="px-3 py-2 text-sm rounded-md bg-stone-800 text-white font-medium hover:bg-stone-900 flex-shrink-0 self-start transition-colors">
+              Save
+            </button>
+          </form>
+        </div>
+
+        {# Timeline entries #}
+        {% if log %}
+        <div class="space-y-3">
+          {% for entry in log %}
+          <div class="flex gap-3">
+            {# Icon dot #}
+            <div class="flex flex-col items-center flex-shrink-0">
+              <div class="w-7 h-7 rounded-full bg-stone-100 flex items-center justify-center">
+                {% set ti = 'phone' if entry.task_type == 'call' else
+                            'mail' if entry.task_type == 'email' else
+                            'voicemail' if entry.task_type == 'vm' else
+                            'message-square' if entry.task_type == 'message' else
+                            'flag' if entry.task_type == 'outcome' else
+                            'file-text' %}
+                <i data-lucide="{{ ti }}" class="w-3.5 h-3.5 text-stone-500"></i>
+              </div>
+              {% if not loop.last %}
+              <div class="w-px flex-1 bg-stone-100 my-1 min-h-[8px]"></div>
+              {% endif %}
+            </div>
+
+            {# Entry content #}
+            <div class="flex-1 min-w-0 pb-1">
+              <div class="flex items-baseline justify-between gap-2">
+                <span class="text-sm font-medium text-stone-800">
                   {% if entry.task_type == 'note' %}Note
                   {% else %}{{ entry.task_type | title }}{% endif %}
                   {% if entry.outcome and entry.outcome not in ('note',) %}
-                  <span class="badge bg-light text-dark ms-1 fw-normal">{{ entry.outcome | replace('_',' ') }}</span>
+                  <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-stone-100 text-stone-500">
+                    {{ entry.outcome | replace('_', ' ') }}
+                  </span>
                   {% endif %}
                 </span>
-                <span class="text-muted ms-2" style="font-size:.72rem;white-space:nowrap">
+                <span class="text-xs text-stone-400 font-mono flex-shrink-0">
                   {{ entry.logged_at[:16] if entry.logged_at else '' }}
                 </span>
               </div>
               {% if entry.notes %}
-              <div class="text-muted mt-1" style="font-size:.82rem">{{ entry.notes }}</div>
+              <p class="text-sm text-stone-500 mt-0.5 leading-relaxed">{{ entry.notes }}</p>
               {% endif %}
             </div>
           </div>
           {% endfor %}
         </div>
+
         {% else %}
-        <p class="text-muted small mb-0">No activity yet. Start the cadence or add a note above.</p>
+        <div class="text-center py-8">
+          <i data-lucide="activity" class="w-8 h-8 text-stone-200 mx-auto mb-2"></i>
+          <p class="text-xs text-stone-400">No activity yet. Start the cadence or add a note above.</p>
+        </div>
         {% endif %}
+
       </div>
     </div>
 
-  </div>
-</div>
+  </div>{# end right column #}
 
-<!-- Complete task modal -->
-<div class="modal fade" id="completeModal" tabindex="-1">
-  <div class="modal-dialog modal-sm">
-    <div class="modal-content">
-      <div class="modal-header py-2">
-        <h6 class="modal-title">Log outcome</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <form method="POST" id="completeForm" action="/leads/{{ lead.control_number }}/complete_task">
-        <input type="hidden" name="task_id" id="modal-task-id">
-        <div class="modal-body">
-          <div id="outcome-options"></div>
-          <textarea name="notes" class="form-control mt-2" rows="2"
-                    placeholder="Notes (optional)"></textarea>
-        </div>
-        <div class="modal-footer py-2">
-          <button type="submit" class="btn btn-success btn-sm">Save & Continue</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- Close lead modal -->
-<div class="modal fade" id="outcomeModal" tabindex="-1">
-  <div class="modal-dialog modal-sm">
-    <div class="modal-content">
-      <div class="modal-header py-2">
-        <h6 class="modal-title">Close this lead</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <form method="POST" action="/leads/{{ lead.control_number }}/outcome">
-        <div class="modal-body">
-          {% for outcome, label, color in [
-            ("converted",  "✅ Converted — they're in",     "success"),
-            ("nurture_90", "🔄 Nurture — check back 90d",  "warning"),
-            ("dead",       "❌ Dead — not interested",      "danger"),
-            ("no_contact", "👻 No contact — never reached", "secondary"),
-          ] %}
-          <div class="form-check mb-2">
-            <input class="form-check-input" type="radio" name="outcome"
-                   value="{{ outcome }}" id="out-{{ outcome }}"
-                   {% if loop.first %}checked{% endif %}>
-            <label class="form-check-label text-{{ color }}" for="out-{{ outcome }}">
-              {{ label }}
-            </label>
-          </div>
-          {% endfor %}
-          <textarea name="notes" class="form-control mt-2" rows="2"
-                    placeholder="Final notes"></textarea>
-        </div>
-        <div class="modal-footer py-2">
-          <button type="submit" class="btn btn-dark btn-sm">Close Lead</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
+</div>{# end grid #}
+</div>{# end x-data="leadDetail()" #}
 {% endblock %}
+
 {% block scripts %}
 <script>
-const callOpts  = ["connected","no_answer","vm_left","wrong_number","callback_scheduled"];
-const emailOpts = ["sent","replied","bounced"];
-const otherOpts = ["done","skipped"];
+function leadDetail() {
+  const callOpts = [
+    { value: 'connected',          label: 'Connected — spoke with them' },
+    { value: 'no_answer',          label: 'No answer' },
+    { value: 'vm_left',            label: 'Left voicemail' },
+    { value: 'wrong_number',       label: 'Wrong number' },
+    { value: 'callback_scheduled', label: 'Callback scheduled' },
+    { value: 'bump',               label: 'Bump — try again tomorrow' },
+  ];
+  const emailOpts = [
+    { value: 'sent',    label: 'Sent' },
+    { value: 'replied', label: 'Replied' },
+    { value: 'bounced', label: 'Bounced' },
+    { value: 'bump',    label: 'Bump — send tomorrow' },
+  ];
+  return {
+    showCloseLead:     false,
+    showCompletePanel: false,
+    showNoteForm:      false,
+    panelTaskId:       null,
+    panelOutcomes:     [],
 
-document.querySelectorAll('.complete-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const taskId = btn.dataset.taskId;
-    const type   = btn.dataset.type;
-    const opts   = (type==='call'||type==='vm') ? callOpts :
-                   (type==='email') ? emailOpts : otherOpts;
-    document.getElementById('modal-task-id').value = taskId;
-    const div = document.getElementById('outcome-options');
-    div.innerHTML = opts.map(o =>
-      `<div class="form-check">
-        <input class="form-check-input" type="radio" name="outcome" value="${o}" id="o-${o}"
-               ${o===opts[0]?'checked':''}>
-        <label class="form-check-label" for="o-${o}">${o.replace(/_/g,' ')}</label>
-       </div>`
-    ).join('');
-    new bootstrap.Modal(document.getElementById('completeModal')).show();
-  });
-});
+    openCompletePanel(taskId, taskType) {
+      this.panelTaskId   = taskId;
+      this.panelOutcomes = (taskType === 'call' || taskType === 'vm') ? callOpts : emailOpts;
+      this.showCompletePanel = true;
+    },
 
-document.querySelectorAll('.copy-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const text = JSON.parse(btn.dataset.text);
-    navigator.clipboard.writeText(text).then(() => {
-      btn.textContent = '✓ Copied';
-      setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy'; }, 1500);
-    });
-  });
-});
-
-document.querySelectorAll('.note-toggle').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const div = document.getElementById(btn.dataset.target);
-    div.classList.toggle('d-none');
-    if (!div.classList.contains('d-none')) {
-      const ta = div.querySelector('textarea');
-      if (ta) ta.focus();
-    }
-  });
-});
+    copyText(event, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const span = event.currentTarget.querySelector('span');
+        if (!span) return;
+        const orig = span.textContent;
+        span.textContent = 'Copied!';
+        setTimeout(() => { span.textContent = orig; }, 1500);
+      });
+    },
+  };
+}
 </script>
 {% endblock %}
