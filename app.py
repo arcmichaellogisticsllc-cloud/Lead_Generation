@@ -1101,6 +1101,28 @@ def save_template():
 
 
 # ---------------------------------------------------------------------------
+# Routes — Inline field editing
+# ---------------------------------------------------------------------------
+
+@app.route("/leads/<cn>/edit", methods=["POST"])
+def edit_lead(cn: str):
+    EDITABLE = {"filer_phone", "filer_email", "business_phone", "website", "notes", "organizer_name"}
+    data = request.get_json(silent=True) or {}
+    updates = {k: v for k, v in data.items() if k in EDITABLE}
+    if not updates:
+        return jsonify({"ok": False, "error": "No valid fields"}), 400
+    conn = db()
+    sets = ", ".join(f"{k} = ?" for k in updates)
+    conn.execute(
+        f"UPDATE leads SET {sets}, last_updated = CURRENT_TIMESTAMP WHERE control_number = ?",
+        list(updates.values()) + [cn],
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
 # Routes — Enrich (manual trigger)
 # ---------------------------------------------------------------------------
 

@@ -122,57 +122,95 @@
           </div>
           {% endif %}
 
-          {# Phone #}
-          <div class="flex gap-2 text-sm">
+          {# Phone — inline editable #}
+          <div class="flex gap-2 text-sm"
+               x-data="editField('{{ lead.control_number }}', 'filer_phone', '{{ lead.filer_phone or '' }}')"
+               @click="startEdit">
             <dt class="w-24 flex-shrink-0 text-stone-400 font-medium text-xs pt-0.5">Phone</dt>
-            <dd class="text-xs min-w-0">
-              {% if best_phone %}
-              <a href="tel:{{ best_phone }}"
-                 class="font-mono text-stone-700 hover:text-primary transition-colors">
-                {{ best_phone | phone_fmt }}
-              </a>
-              {% if lead.filer_phone and lead.business_phone and lead.filer_phone != lead.business_phone %}
-              <div class="mt-0.5">
-                <a href="tel:{{ lead.business_phone }}"
-                   class="font-mono text-stone-400 hover:text-stone-600 transition-colors text-[11px]">
-                  {{ lead.business_phone | phone_fmt }}
-                </a>
-                <span class="text-[10px] text-stone-300 ml-1">business</span>
-              </div>
-              {% endif %}
-              {% else %}
-              <span class="text-stone-300">—</span>
-              {% endif %}
+            <dd class="text-xs min-w-0 flex-1">
+              <template x-if="!editing">
+                <span class="group flex items-center gap-1 cursor-pointer">
+                  {% if best_phone %}
+                  <a href="tel:{{ best_phone }}" @click.stop
+                     class="font-mono text-stone-700 hover:text-primary transition-colors">
+                    {{ best_phone | phone_fmt }}
+                  </a>
+                  {% if lead.filer_phone and lead.business_phone and lead.filer_phone != lead.business_phone %}
+                  <div class="mt-0.5">
+                    <a href="tel:{{ lead.business_phone }}" @click.stop
+                       class="font-mono text-stone-400 hover:text-stone-600 transition-colors text-[11px]">
+                      {{ lead.business_phone | phone_fmt }}
+                    </a>
+                    <span class="text-[10px] text-stone-300 ml-1">business</span>
+                  </div>
+                  {% endif %}
+                  {% else %}
+                  <span class="text-stone-300 italic">+ add phone</span>
+                  {% endif %}
+                  <i data-lucide="pencil" class="w-3 h-3 text-stone-300 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity"></i>
+                </span>
+              </template>
+              <template x-if="editing">
+                <input x-ref="input" x-model="draft" type="tel" placeholder="(555) 000-0000"
+                       class="w-full font-mono text-xs border border-primary rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-primary/40"
+                       @keydown.enter="save" @keydown.escape="cancel" @blur="save">
+              </template>
             </dd>
           </div>
 
-          {# Email #}
-          <div class="flex gap-2">
+          {# Email — inline editable #}
+          <div class="flex gap-2"
+               x-data="editField('{{ lead.control_number }}', 'filer_email', '{{ lead.filer_email or '' }}')"
+               @click="startEdit">
             <dt class="w-24 flex-shrink-0 text-stone-400 font-medium text-xs pt-0.5">Email</dt>
-            <dd class="text-xs min-w-0">
-              {% if best_email %}
-              <a href="mailto:{{ best_email }}"
-                 class="text-stone-700 hover:text-primary transition-colors truncate block">
-                {{ best_email }}
-              </a>
-              {% else %}
-              <span class="text-stone-300">—</span>
-              {% endif %}
+            <dd class="text-xs min-w-0 flex-1">
+              <template x-if="!editing">
+                <span class="group flex items-center gap-1 cursor-pointer">
+                  {% if best_email %}
+                  <a href="mailto:{{ best_email }}" @click.stop
+                     class="text-stone-700 hover:text-primary transition-colors truncate block">
+                    {{ best_email }}
+                  </a>
+                  {% else %}
+                  <span class="text-stone-300 italic">+ add email</span>
+                  {% endif %}
+                  <i data-lucide="pencil" class="w-3 h-3 text-stone-300 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity"></i>
+                </span>
+              </template>
+              <template x-if="editing">
+                <input x-ref="input" x-model="draft" type="email" placeholder="email@example.com"
+                       class="w-full text-xs border border-primary rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-primary/40"
+                       @keydown.enter="save" @keydown.escape="cancel" @blur="save">
+              </template>
             </dd>
           </div>
 
-          {# Website #}
-          {% if lead.website %}
-          <div class="flex gap-2">
+          {# Website — inline editable #}
+          <div class="flex gap-2"
+               x-data="editField('{{ lead.control_number }}', 'website', '{{ lead.website or '' }}')"
+               @click="startEdit">
             <dt class="w-24 flex-shrink-0 text-stone-400 font-medium text-xs pt-0.5">Website</dt>
-            <dd class="text-xs min-w-0">
-              <a href="{{ lead.website }}" target="_blank" rel="noopener"
-                 class="text-stone-700 hover:text-primary transition-colors truncate block">
-                {{ lead.website[:40] }}
-              </a>
+            <dd class="text-xs min-w-0 flex-1">
+              <template x-if="!editing">
+                <span class="group flex items-center gap-1 cursor-pointer">
+                  {% if lead.website %}
+                  <a href="{{ lead.website }}" target="_blank" rel="noopener" @click.stop
+                     class="text-stone-700 hover:text-primary transition-colors truncate block">
+                    {{ lead.website[:40] }}
+                  </a>
+                  {% else %}
+                  <span class="text-stone-300 italic">+ add website</span>
+                  {% endif %}
+                  <i data-lucide="pencil" class="w-3 h-3 text-stone-300 opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity"></i>
+                </span>
+              </template>
+              <template x-if="editing">
+                <input x-ref="input" x-model="draft" type="url" placeholder="https://..."
+                       class="w-full text-xs border border-primary rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-primary/40"
+                       @keydown.enter="save" @keydown.escape="cancel" @blur="save">
+              </template>
             </dd>
           </div>
-          {% endif %}
 
           {# Processor #}
           {% if lead.detected_payment_processor %}
@@ -731,6 +769,38 @@ function leadDetail() {
         const orig = span.textContent;
         span.textContent = 'Copied!';
         setTimeout(() => { span.textContent = orig; }, 1500);
+      });
+    },
+  };
+}
+
+function editField(cn, field, initial) {
+  return {
+    editing: false,
+    draft: initial,
+    _saved: initial,
+    startEdit() {
+      if (this.editing) return;
+      this.draft = this._saved;
+      this.editing = true;
+      this.$nextTick(() => { if (this.$refs.input) this.$refs.input.focus(); });
+    },
+    cancel() {
+      this.editing = false;
+      this.draft = this._saved;
+    },
+    save() {
+      if (!this.editing) return;
+      this.editing = false;
+      const val = this.draft.trim() || null;
+      if (val === (this._saved || null)) return;
+      fetch(`/leads/${cn}/edit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: val }),
+      }).then(r => r.json()).then(d => {
+        if (d.ok) { this._saved = val || ''; location.reload(); }
+        else { this.draft = this._saved; alert('Save failed'); }
       });
     },
   };
